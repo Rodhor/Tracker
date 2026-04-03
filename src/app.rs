@@ -28,8 +28,8 @@ impl App {
     // new() is called to create a new App instance and return it along with a Task<Message>
     // The Task<Message> is used to kick of any async tasks upon app initialization
     pub fn new() -> (Self, Task<Message>) {
-        let data = store::load().unwrap_or_else(|e| {
-            eprintlin!("Failed to load data: {e}");
+        let data = store::load_data().unwrap_or_else(|e| {
+            eprintln!("Failed to load data: {e}");
             AppData::default()
         });
 
@@ -57,7 +57,7 @@ impl App {
 
     // view() is called to render the app's UI
     pub fn view(&self) -> Element<Message> {
-        let conten = column![self.timer_bar(), self.task_list(), self.status_bar(),].spacing(0);
+        let content = column![self.timer_bar(), self.task_list(), self.status_bar(),].spacing(0);
 
         container(content)
             .width(Length::Fill)
@@ -114,7 +114,7 @@ impl App {
     // Subscription defines the iced Subscription for the app (currently none)
     // this is used to listen to a stream of messages from the OS or other sources
     // forexample, a timer tick
-    pub fn Subscription(&self) -> iced::Subscription<Message> {
+    pub fn subscription(&self) -> iced::Subscription<Message> {
         iced::Subscription::none()
     }
 }
