@@ -17,7 +17,7 @@ impl TimeEntry {
         Self {
             id: Uuid::new_v4(),
             task_id,
-            started_at: Utc::now().to_string(),
+            started_at: Utc::now().to_rfc3339(),
             ended_at: None,
             minutes: None,
             notes: None,

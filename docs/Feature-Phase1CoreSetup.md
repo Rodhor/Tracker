@@ -63,9 +63,9 @@ Open it and replace the contents with this:
 
 ```toml
 [package]
-name = "tasktracker"
+name = "tracker"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # The GUI framework
@@ -97,6 +97,17 @@ This keeps compile times down and avoids pulling in code you will not use.
 - `iced/tokio` — iced uses an async runtime for subscriptions (the timer tick). `tokio`
   is the standard async runtime in Rust.
 - `chrono/serde` — same idea: enables `DateTime` values to serialise/deserialise automatically.
+
+**Why `edition = "2024"` and not `"2021"`:**
+
+Rust editions are opt-in language revisions — they do not break existing crates, but they
+unlock newer language rules within your own code. Edition 2024 is the current stable edition.
+Two rules from 2024 affect this codebase:
+
+- **`mismatched_lifetime_syntaxes` is a hard warning.** Functions returning `Element<Message>`
+  must write `Element<'_, Message>` — the `'_` makes the borrow explicit. You will see this
+  on every view function. If you omit it, the compiler warns loudly.
+- **`gen` is a reserved keyword.** Do not name any variable, function, or type `gen`.
 
 After editing `Cargo.toml`, run `cargo build` once. Cargo will download and compile all
 dependencies. This takes a few minutes the first time. Subsequent builds are fast.
@@ -393,7 +404,7 @@ pub fn data_path() -> PathBuf {
 //
 // We use String for errors here to keep it simple. A production app would use
 // a proper error enum, but that is complexity you do not need yet.
-pub fn load() -> Result<AppData, String> {
+pub fn load_data() -> Result<AppData, String> {
     let path = data_path();
 
     // If the file does not exist, return empty data — this is first run.
@@ -419,7 +430,7 @@ pub fn load() -> Result<AppData, String> {
 
 // Saves app data to disk.
 // &AppData is a reference — we are borrowing the data to read it, not taking ownership.
-pub fn save(data: &AppData) -> Result<(), String> {
+pub fn save_data(data: &AppData) -> Result<(), String> {
     let path = data_path();
 
     // serde_json::to_string_pretty serialises to nicely indented JSON.
@@ -559,7 +570,7 @@ impl App {
     //   - Task<Message>: any async work to kick off at startup (none for now)
     pub fn new() -> (Self, Task<Message>) {
         // Load data from disk. If it fails, log the error and start with empty data.
-        let data = store::load().unwrap_or_else(|e| {
+        let data = store::load_data().unwrap_or_else(|e| {
             eprintln!("Failed to load data: {e}");
             AppData::default()
         });
@@ -603,8 +614,9 @@ impl App {
 
     // view() returns the UI tree. It is called after every update().
     // &self means we have a read-only reference — view() cannot mutate state.
-    // It returns Element<Message> — a widget tree that can produce Message values.
-    pub fn view(&self) -> Element<Message> {
+    // Element<'_, Message> — the '_ makes the borrow from &self explicit.
+    // Rust 2024 requires this on all functions where &self and Element appear together.
+    pub fn view(&self) -> Element<'_, Message> {
         // column! is a macro that stacks widgets vertically.
         // It is equivalent to a VBox in Fyne or a flex-column in CSS.
         // Each argument is a widget that gets placed in order, top to bottom.
@@ -629,7 +641,7 @@ impl App {
     // They return Element<Message> — a piece of the widget tree.
     // Keeping them as separate functions makes view() readable and each zone easy to edit.
 
-    fn timer_bar(&self) -> Element<Message> {
+    fn timer_bar(&self) -> Element<'_, Message> {
         let label = match &self.active_entry {
             Some(entry) => {
                 // Later: look up the task name and show elapsed time.
@@ -645,7 +657,7 @@ impl App {
             .into()
     }
 
-    fn task_list(&self) -> Element<Message> {
+    fn task_list(&self) -> Element<'_, Message> {
         if self.tasks.is_empty() {
             // .into() at the end of a widget converts it to Element<Message>
             return container(text("No tasks yet. Add one below."))
@@ -670,7 +682,12 @@ impl App {
             .into()
     }
 
-    fn task_row(&self, task: &AppTask) -> Element<Message> {
+    // task_row borrows from both &self (implicitly) and the `task` parameter.
+    // The returned Element may contain references into `task` (e.g. &task.name).
+    // Rust needs a named lifetime to express: "this Element lives at most as long as `task`".
+    // The <'a> introduces the name, &'a AppTask ties the parameter to it,
+    // and Element<'a, Message> ties the return value to the same lifetime.
+    fn task_row<'a>(&self, task: &'a AppTask) -> Element<'a, Message> {
         // row! stacks widgets horizontally — like HBox or flex-row.
         row![
             text(&task.name).width(Length::Fill),   // name expands to fill space
@@ -681,7 +698,7 @@ impl App {
         .into()
     }
 
-    fn status_bar(&self) -> Element<Message> {
+    fn status_bar(&self) -> Element<'_, Message> {
         // Today's total — placeholder text for now
         let total_label = text("Today: 0h 0m");
 
@@ -720,36 +737,48 @@ impl App {
 mod app;
 mod data;
 
-use app::{App, Message};
-
 fn main() -> iced::Result {
     // iced::application() sets up the application.
-    // It takes three things:
-    //   1. A title string
-    //   2. Your update function (App::update — a function pointer, not a call)
-    //   3. Your view function   (App::view   — same)
+    // In iced 0.14 it takes three things — all function pointers, not calls:
+    //   1. Your boot function    (App::new   — returns the initial App + any startup Task)
+    //   2. Your update function  (App::update)
+    //   3. Your view function    (App::view)
     //
-    // The method chaining (.subscription, .run_with) configures the builder
-    // before handing control to iced.
-    iced::application("Tasktracker", App::update, App::view)
+    // The method chaining configures the builder before handing control to iced.
+    iced::application(App::new, App::update, App::view)
+        // .title() sets the window title. It is a builder method in 0.14 —
+        // it is no longer the first argument to application().
+        .title("Tasktracker")
         // Wire in the subscription so iced knows to call App::subscription
         // after each update. In Phase 1 this always returns Subscription::none(),
         // but the wiring must be in place for Phase 2 to just work.
         .subscription(App::subscription)
-        // .run_with() is called instead of .run() when your app needs to initialise state.
-        // It takes a function that returns (App, iced::Task<Message>).
-        // App::new is a function pointer — it points to the App::new function we defined.
-        .run_with(App::new)
+        // .run() starts the event loop. No arguments — the boot function was already
+        // passed to application() above.
+        .run()
 }
 ```
 
-**Why `App::update` and `App::view` as arguments, not calls?**
+**Why `App::new`, `App::update`, `App::view` as arguments, not calls?**
 
-This is a function pointer — you are passing the function itself, not calling it.
+These are function pointers — you are passing the functions themselves, not calling them.
 iced stores these pointers and calls them for you at the right time.
 
 In TypeScript, this is the difference between `arr.map(fn)` and `arr.map(fn())`.
 You pass `fn`, the function, not `fn()`, its result.
+
+**iced 0.13 → 0.14: what moved**
+
+| 0.13 | 0.14 |
+|------|------|
+| `application(title, update, view)` | `application(boot, update, view)` |
+| `.run_with(App::new)` | gone — boot goes in `application()` |
+| title was first arg | `.title("...")` builder method |
+| `.run()` (no init state) | `.run()` — same, used when boot returns state |
+
+The `use app::{App, Message}` import that the 0.13 docs included is no longer needed in
+`main.rs` — `App::new`, `App::update`, and `App::view` are resolved via the `mod app;`
+declaration without an explicit `use`.
 
 ---
 

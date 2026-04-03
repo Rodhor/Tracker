@@ -53,7 +53,7 @@ impl Task {
             status: TaskStatus::Todo,
             urgent: false,
             important: false,
-            created_at: Utc::now().to_string(),
+            created_at: Utc::now().to_rfc3339(),
         }
     }
 

@@ -4,6 +4,7 @@
 **Decision:** Replace Go + Fyne with Rust + iced
 **Storage decision:** JSON files instead of SQLite
 **Follows:** `docs/Brainstorm-UIEvolution.md`, `docs/Brainstorm-FrameworkMigration.md`
+**Updated:** 2026-04-03 — corrected iced 0.14 API, Rust 2024 lifetime syntax, resolved open questions
 
 ---
 
@@ -142,7 +143,8 @@ enum View {
 ```rust
 enum Message {
     // Timer
-    Tick(Instant),              // fires every second from subscription
+    Tick,                       // fires every second from subscription — no Instant needed,
+                                // elapsed time is computed from active_entry.started_at in view()
     StartTimer(Uuid),           // start on this task (auto-stops previous)
     OpenStopPrompt,             // user clicked Stop — show the prompt
     StopPromptNoteChanged(String),
@@ -182,7 +184,9 @@ The live timer display needs to update every second. iced handles this with a Su
 ```rust
 fn subscription(&self) -> Subscription<Message> {
     if self.active_entry.is_some() {
-        iced::time::every(Duration::from_secs(1)).map(Message::Tick)
+        // iced::time::every() produces Instant values — we discard them with |_|
+        // because elapsed time is computed from active_entry.started_at, not from the Instant.
+        iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick)
     } else {
         Subscription::none()
     }
@@ -335,12 +339,14 @@ returns a `Message` value, not a closure that mutates state. State only changes 
 **2. View functions are called every frame.** They are cheap Rust functions, not React-style
 component trees with lifecycle hooks. Build views from the Model every time.
 
-**3. `Command` (now `Task` in iced 0.13+) for async work.** File I/O on save can be done
-synchronously in `update()` for this app's data size — no async needed.
+**3. `Task` (renamed from `Command` in iced 0.13) for async work.** File I/O on save can be done
+synchronously in `update()` for this app's data size — no async needed. Return `Task::none()`
+from every `update()` arm that does not kick off async work.
 
-**4. `container::overlay` for the quick-add panel.** The quick-add panel and stop-prompt
-modal are drawn over the main content using iced's overlay/stack containers, not separate
-windows. iced does support multiple windows, but a panel is simpler for these use cases.
+**4. `iced::widget::stack` for the quick-add panel and stop-prompt modal.** These are drawn
+over the main content using `widget::stack`, which layers widgets on top of each other. The
+old `container::overlay` API no longer exists in iced 0.14 — `stack` is the correct primitive.
+iced does support multiple windows, but an in-window overlay is simpler for these use cases.
 
 **5. Styling is per-widget.** Every widget's `.style()` method accepts a closure or a type
 implementing that widget's style trait. Colours, borders, and radius are set in Rust, not CSS.
@@ -348,12 +354,59 @@ Define a `theme.rs` module with constants and style functions to keep it consist
 
 ---
 
-## Open questions before implementation starts
+## Open questions — resolved
 
-1. **iced version to pin:** 0.14.0 is the current stable. Confirm before creating Cargo.toml.
-2. **Multi-window vs overlay for quick-add:** Starting as an overlay panel is simpler.
-   If a separate window is needed later (e.g. for the global hotkey to show it independently),
-   iced's multi-window API is available.
-3. **`data_dir()` path:** Confirm whether to use `dirs::data_dir()` (e.g. `~/.local/share/tasktracker/`
-   on Linux) or `dirs::home_dir()` (keeping `~/.tasktracker/` as in the Go app).
-   Platform-standard (`data_dir`) is the better long-term choice.
+1. **iced version:** Pinned to 0.14 in `Cargo.toml`. ✓
+2. **Multi-window vs overlay for quick-add:** Overlay panel confirmed. `iced::widget::stack` is
+   the correct widget. Multi-window available later if needed. ✓
+3. **`data_dir()` path:** Using `dirs::home_dir()` → `~/.tracker/data.json`. Chosen for
+   simplicity; can migrate to `dirs::data_dir()` later without breaking existing data. ✓
+
+## iced 0.14 API — what changed from the planning docs
+
+The original planning docs were written targeting iced 0.13's API. iced 0.14 changed the
+`application()` entry point signature. All code examples in this repo reflect the 0.14 API.
+
+### Old (0.13) — do not use
+```rust
+iced::application("Tasktracker", App::update, App::view)
+    .subscription(App::subscription)
+    .run_with(App::new)
+```
+
+### Correct (0.14)
+```rust
+iced::application(App::new, App::update, App::view)
+    .title("Tasktracker")
+    .subscription(App::subscription)
+    .run()
+```
+
+**What changed:**
+- First argument is the *boot function* (`App::new`), not the title string
+- `.title()` is now a builder method on the returned `Application`
+- `.run_with()` does not exist — the boot function is passed to `application()` directly
+- `.run()` is the terminal call (no arguments)
+
+## Rust 2024 edition notes
+
+This project uses `edition = "2024"` in `Cargo.toml`. Two things from the 2024 edition affect
+this codebase:
+
+**1. `Element<'_, Message>` required on all view functions.**
+Rust 2024 enforces the `mismatched_lifetime_syntaxes` lint as a hard warning. Any function
+that takes `&self` and returns `Element<Message>` must write `Element<'_, Message>` instead —
+the `'_` makes the borrow relationship explicit. Functions that borrow from a *parameter*
+(not just `self`) need a named lifetime:
+
+```rust
+// Takes &self only — use '_
+fn timer_bar(&self) -> Element<'_, Message> { ... }
+
+// Borrows from the `task` parameter — use named lifetime
+fn task_row<'a>(&self, task: &'a AppTask) -> Element<'a, Message> { ... }
+```
+
+**2. `gen` is a reserved keyword.**
+Do not name any variable, function, or type `gen`. It is reserved for the upcoming
+generator syntax. Use `generate`, `generated`, or a domain-specific name instead.
