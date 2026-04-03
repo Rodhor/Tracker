@@ -21,7 +21,7 @@ pub fn data_path() -> PathBuf {
     dir.join("data.json")
 }
 
-pub fn load_data() -> Result<AppData, string> {
+pub fn load_data() -> Result<AppData, String> {
     // Retrieve the path
     let path = data_path();
 
@@ -42,7 +42,7 @@ pub fn load_data() -> Result<AppData, string> {
     Ok(data)
 }
 
-pub fn save_data(data: &AppData) -> Result<(), string> {
+pub fn save_data(data: &AppData) -> Result<(), String> {
     // Retrieve the path
     let path = data_path();
 

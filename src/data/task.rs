@@ -10,21 +10,23 @@ pub enum TaskStatus {
     Done,
 }
 
-// Returns the next status for a task - Circleling around one Done
-pub fn next(&self) -> TaskStatus {
-    match self {
-        TaskStatus::Todo => TaskStatus::InProgress,
-        TaskStatus::InProgress => TaskStatus::Done,
-        TaskStatus::Done => TaskStatus::Todo,
+impl TaskStatus {
+    // Returns the next status for a task - Circleling around one Done
+    pub fn next(&self) -> TaskStatus {
+        match self {
+            TaskStatus::Todo => TaskStatus::InProgress,
+            TaskStatus::InProgress => TaskStatus::Done,
+            TaskStatus::Done => TaskStatus::Todo,
+        }
     }
-}
 
-// Returns the label for a task status for usage in UI
-pub fn label(&self) -> &'static str {
-    match self {
-        TaskStatus::Todo => "To Do",
-        TaskStatus::InProgress => "In Progress",
-        TaskStatus::Done => "Done",
+    // Returns the label for a task status for usage in UI
+    pub fn label(&self) -> &'static str {
+        match self {
+            TaskStatus::Todo => "To Do",
+            TaskStatus::InProgress => "In Progress",
+            TaskStatus::Done => "Done",
+        }
     }
 }
 
@@ -36,7 +38,7 @@ pub struct Task {
     pub name: String,
     pub description: Option<String>,
     pub status: TaskStatus,
-    pub urgend: bool,
+    pub urgent: bool,
     pub important: bool,
     pub created_at: String,
 }

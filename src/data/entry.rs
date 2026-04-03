@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserializse)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeEntry {
     pub id: Uuid,
     pub task_id: Uuid,
-    pub started_at: string,
+    pub started_at: String,
     pub ended_at: Option<String>,
     pub minutes: Option<i64>,
     pub notes: Option<String>,
