@@ -1,10 +1,11 @@
 mod app;
 mod data;
 
-use app::{App, Message};
+use app::App;
 
 fn main() -> iced::Result {
-    iced::application("Tasktracker", App::update, App::view)
+    iced::application(App::new, App::update, App::view)
+        .title("Tasktracker")
         .subscription(App::subscription)
-        .run_with(App::new())
+        .run()
 }

@@ -1,6 +1,6 @@
 use crate::data::entry::TimeEntry;
 use crate::data::store::{self, AppData};
-use crate::data::task::{Task as AppTask, TaskStatus};
+use crate::data::task::Task as AppTask;
 use iced::widget::{column, container, row, text};
 use iced::{Element, Length, Task};
 
@@ -53,10 +53,11 @@ impl App {
             Message::AddTask => {}
             Message::OpenReview => {}
         }
+        Task::none()
     }
 
     // view() is called to render the app's UI
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<'_, Message> {
         let content = column![self.timer_bar(), self.task_list(), self.status_bar(),].spacing(0);
 
         container(content)
@@ -66,7 +67,7 @@ impl App {
     }
 
     // timer_bar is the UI Element that displays the active timer, if any
-    fn timer_bar(&self) -> Element<Message> {
+    fn timer_bar(&self) -> Element<'_, Message> {
         let label = match &self.active_entry {
             Some(entry) => format!("Timer running - Task{}", entry.task_id),
             None => "No timer running".to_string(),
@@ -79,7 +80,7 @@ impl App {
     }
 
     // task_list is the UI Element that displays the list of tasks (Based on the Row element below)
-    fn task_list(&self) -> Element<Message> {
+    fn task_list(&self) -> Element<'_, Message> {
         if self.tasks.is_empty() {
             return container(text("No tasks yet. Add one below."))
                 .width(Length::Fill)
@@ -94,7 +95,7 @@ impl App {
     }
 
     // task_row defines the UI Row Element for a single task
-    fn task_row(&self, task: &AppTask) -> Element<Message> {
+    fn task_row<'a>(&'a self, task: &'a AppTask) -> Element<'a, Message> {
         row![
             text(&task.name).width(Length::Fill),
             text(task.status.label()),
@@ -105,7 +106,7 @@ impl App {
     }
 
     // status_bar is the UI Element that displays the status bar at the bottom of the app
-    fn status_bar(&self) -> Element<Message> {
+    fn status_bar(&self) -> Element<'_, Message> {
         let total_label = text("Today: 0h 0m");
 
         row![total_label,].padding(8).into()
