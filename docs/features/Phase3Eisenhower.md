@@ -42,6 +42,14 @@ so the user can actually organise their work, not just add and time tasks.
 
 *To be filled in after implementation. Say "I finished Phase 3" to trigger this.*
 
+### Design decision — status reset on save
+
+`SaveEditTask` calls `task.status.reset_status()` which returns `TaskStatus::Todo`,
+resetting the task's status every time edits are saved. This is intentional: a task
+should not be In Progress or Done without having been consciously placed in an
+Eisenhower quadrant first. Saving the edit panel is the moment the user commits to a
+priority — at that point the task starts fresh in Todo.
+
 ---
 
 ## Change History
