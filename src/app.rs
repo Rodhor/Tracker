@@ -1,7 +1,7 @@
 use crate::data::entry::TimeEntry;
 use crate::data::store::{self, AppData};
 use crate::data::task::Task as AppTask;
-use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input, Container};
+use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input};
 use iced::{Element, Length, Task};
 use uuid::Uuid;
 
@@ -211,32 +211,27 @@ impl App {
 
         let mut items: Vec<Element<Message>> = Vec::new();
 
-        let mut sorted: Vec<&AppTask> = self.tasks.iter()
-            .filter(|t| t.has_priority())
-            .collect();
+        let mut sorted: Vec<&AppTask> = self.tasks.iter().filter(|t| t.has_priority()).collect();
         sorted.sort_by_key(|t| t.quadrant());
 
         if !sorted.is_empty() {
-            items
-                .push(container(text("TODOS"))
-                           .padding(iced::Padding::new(8.0).bottom(4))
-                           .into()
+            items.push(
+                container(text("TODOS"))
+                    .padding(iced::Padding::new(8.0).bottom(4))
+                    .into(),
             );
             for task in sorted {
                 items.push(self.task_row_or_edit(task))
             }
         }
 
-
-        let unsorted: Vec<&AppTask> = self.tasks.iter()
-            .filter(|t| !t.has_priority())
-            .collect();
+        let unsorted: Vec<&AppTask> = self.tasks.iter().filter(|t| !t.has_priority()).collect();
 
         if !unsorted.is_empty() {
             items.push(
                 container(text("Needs Sorting"))
                     .padding(iced::Padding::new(8.0).bottom(4))
-                    .into()
+                    .into(),
             );
             for task in unsorted {
                 items.push(self.task_row_or_edit(task));
@@ -251,7 +246,6 @@ impl App {
     fn task_row_or_edit<'a>(&'a self, task: &'a AppTask) -> Element<'a, Message> {
         if self.editing_task_id == Some(task.id) {
             self.edit_row(task)
-
         } else {
             self.task_row(task)
         }
@@ -297,23 +291,24 @@ impl App {
                 text(&task.name).width(Length::Fill),
                 button(text("Save")).on_press(Message::SaveEditTask),
                 button(text("Cancel")).on_press(Message::CloseEditTask)
-        ]
+            ]
             .spacing(8),
             row![
                 checkbox(self.edit_urgent)
-                .label("Urgent")
-                .on_toggle(Message::EditUrgentChanged),
+                    .label("Urgent")
+                    .on_toggle(Message::EditUrgentChanged),
                 checkbox(self.edit_important)
-                .label("Important")
-                .on_toggle(Message::EditImportantChanged),
+                    .label("Important")
+                    .on_toggle(Message::EditImportantChanged),
             ]
             .spacing(16),
             text_input("Description (optional)", &self.edit_description)
-        .on_input(Message::EditDescriptionChanged)
-        .on_submit(Message::SaveEditTask)]
-            .padding(8)
-            .spacing(4)
-            .into()
+                .on_input(Message::EditDescriptionChanged)
+                .on_submit(Message::SaveEditTask)
+        ]
+        .padding(8)
+        .spacing(4)
+        .into()
     }
 
     // Subscription defines the iced Subscription for the app (currently none)
