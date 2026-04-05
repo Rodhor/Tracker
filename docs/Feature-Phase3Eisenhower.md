@@ -270,9 +270,13 @@ fn task_list(&self) -> Element<'_, Message> {
 
     if !unsorted.is_empty() {
         // Section header — only shown when there are unsorted tasks
+        // Padding::new(8) sets all sides to 8, then .bottom(4) reduces bottom spacing
+        // so the header sits closer to its tasks than to the section above it.
+        // Note: .padding([top, right, bottom, left]) does NOT exist in iced 0.14.
+        // Use Padding::new(n).side(value) builder syntax instead.
         items.push(
             container(text("Needs sorting"))
-                .padding([8, 8, 4, 8])
+                .padding(iced::Padding::new(8).bottom(4))
                 .into()
         );
         for task in unsorted {

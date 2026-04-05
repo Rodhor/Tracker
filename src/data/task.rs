@@ -20,6 +20,10 @@ impl TaskStatus {
         }
     }
 
+    pub fn reset_status(&self) -> TaskStatus {
+        TaskStatus::Todo
+    }
+
     // Returns the label for a task status for usage in UI
     pub fn label(&self) -> &'static str {
         match self {

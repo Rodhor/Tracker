@@ -1,7 +1,7 @@
 use crate::data::entry::TimeEntry;
 use crate::data::store::{self, AppData};
 use crate::data::task::Task as AppTask;
-use iced::widget::{button, column, container, row, scrollable, text, text_input};
+use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input, Container};
 use iced::{Element, Length, Task};
 use uuid::Uuid;
 
@@ -12,6 +12,12 @@ pub struct App {
     entries: Vec<TimeEntry>,
     active_entry: Option<TimeEntry>,
     new_task_input: String,
+
+    // Edit task panel - all None or Empty when no task is being edited
+    editing_task_id: Option<Uuid>,
+    edit_urgent: bool,
+    edit_important: bool,
+    edit_description: String,
 }
 
 // --- The Message enum ---
@@ -26,6 +32,14 @@ pub enum Message {
     CycleStatus(Uuid),
     StopTimer,
     OpenReview,
+
+    // Edit task panel
+    OpenEditTask(Uuid),
+    CloseEditTask,
+    EditUrgentChanged(bool),
+    EditImportantChanged(bool),
+    EditDescriptionChanged(String),
+    SaveEditTask,
 }
 
 // --- The App implementation ---
@@ -46,6 +60,12 @@ impl App {
             entries: data.entries,
             active_entry,
             new_task_input: String::new(),
+
+            // Edit task panel - all None or Empty when no task is beeing edited
+            editing_task_id: None,
+            edit_urgent: false,
+            edit_important: false,
+            edit_description: String::new(),
         };
 
         // Task::none() is returned because there are no async tasks to kick off
@@ -90,7 +110,55 @@ impl App {
             Message::Tick => {}
 
             // --- UI messages ---
-            Message::OpenReview => {}
+            Message::OpenReview => {} // Edit Panel
+
+            // Edit task panel
+            Message::OpenEditTask(task_id) => {
+                // copy task into temporary fields for editing
+                if let Some(task) = self.tasks.iter().find(|t| t.id == task_id) {
+                    self.editing_task_id = Some(task.id);
+                    self.edit_urgent = task.urgent;
+                    self.edit_important = task.important;
+                    // Use unwrap_or_default() to avoid None and instead default to empty
+                    self.edit_description = task.description.clone().unwrap_or_default();
+                }
+            }
+
+            Message::CloseEditTask => {
+                self.editing_task_id = None;
+                self.edit_urgent = false;
+                self.edit_important = false;
+                self.edit_description.clear();
+            }
+
+            Message::EditUrgentChanged(value) => {
+                self.edit_urgent = value;
+            }
+
+            Message::EditImportantChanged(value) => {
+                self.edit_important = value;
+            }
+
+            Message::EditDescriptionChanged(value) => {
+                self.edit_description = value;
+            }
+
+            Message::SaveEditTask => {
+                if let Some(id) = self.editing_task_id {
+                    if let Some(task) = self.tasks.iter_mut().find(|t| t.id == id) {
+                        task.urgent = self.edit_urgent;
+                        task.important = self.edit_important;
+                        let desc = self.edit_description.trim().to_string();
+                        task.description = if desc.is_empty() { None } else { Some(desc) };
+                        task.status = task.status.reset_status();
+                    }
+                }
+                self.editing_task_id = None;
+                self.edit_urgent = false;
+                self.edit_important = false;
+                self.edit_description.clear();
+                self.save();
+            }
         }
         Task::none()
     }
@@ -141,12 +209,52 @@ impl App {
                 .into();
         }
 
-        let rows: Vec<Element<Message>> =
-            self.tasks.iter().map(|task| self.task_row(task)).collect();
+        let mut items: Vec<Element<Message>> = Vec::new();
 
-        scrollable(column(rows).spacing(4))
+        let mut sorted: Vec<&AppTask> = self.tasks.iter()
+            .filter(|t| t.has_priority())
+            .collect();
+        sorted.sort_by_key(|t| t.quadrant());
+
+        if !sorted.is_empty() {
+            items
+                .push(container(text("TODOS"))
+                           .padding(iced::Padding::new(8.0).bottom(4))
+                           .into()
+            );
+            for task in sorted {
+                items.push(self.task_row_or_edit(task))
+            }
+        }
+
+
+        let unsorted: Vec<&AppTask> = self.tasks.iter()
+            .filter(|t| !t.has_priority())
+            .collect();
+
+        if !unsorted.is_empty() {
+            items.push(
+                container(text("Needs Sorting"))
+                    .padding(iced::Padding::new(8.0).bottom(4))
+                    .into()
+            );
+            for task in unsorted {
+                items.push(self.task_row_or_edit(task));
+            }
+        }
+
+        scrollable(column(items).spacing(4))
             .height(Length::Fill)
             .into()
+    }
+
+    fn task_row_or_edit<'a>(&'a self, task: &'a AppTask) -> Element<'a, Message> {
+        if self.editing_task_id == Some(task.id) {
+            self.edit_row(task)
+
+        } else {
+            self.task_row(task)
+        }
     }
 
     // task_row defines the UI Row Element for a single task
@@ -154,7 +262,8 @@ impl App {
         row![
             button(text("▶")).on_press(Message::StartTimer(task.id)),
             text(&task.name).width(Length::Fill),
-            button(text(task.status.label())).on_press(Message::CycleStatus(task.id))
+            button(text(task.status.label())).on_press(Message::CycleStatus(task.id)),
+            button(text("Edit")).on_press(Message::OpenEditTask(task.id))
         ]
         .padding(8)
         .spacing(8)
@@ -180,9 +289,36 @@ impl App {
         .into()
     }
 
+    // --- Edit Tasks ---
+    fn edit_row<'a>(&'a self, task: &'a AppTask) -> Element<'a, Message> {
+        column![
+            // Fist row: Task name + save / cancel buttons
+            row![
+                text(&task.name).width(Length::Fill),
+                button(text("Save")).on_press(Message::SaveEditTask),
+                button(text("Cancel")).on_press(Message::CloseEditTask)
+        ]
+            .spacing(8),
+            row![
+                checkbox(self.edit_urgent)
+                .label("Urgent")
+                .on_toggle(Message::EditUrgentChanged),
+                checkbox(self.edit_important)
+                .label("Important")
+                .on_toggle(Message::EditImportantChanged),
+            ]
+            .spacing(16),
+            text_input("Description (optional)", &self.edit_description)
+        .on_input(Message::EditDescriptionChanged)
+        .on_submit(Message::SaveEditTask)]
+            .padding(8)
+            .spacing(4)
+            .into()
+    }
+
     // Subscription defines the iced Subscription for the app (currently none)
     // this is used to listen to a stream of messages from the OS or other sources
-    // forexample, a timer tick
+    // for example, a timer tick
     pub fn subscription(&self) -> iced::Subscription<Message> {
         if self.active_entry.is_some() {
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick)
