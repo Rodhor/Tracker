@@ -9,6 +9,10 @@ pub struct TimeEntry {
     pub ended_at: Option<String>,
     pub minutes: Option<i64>,
     pub notes: Option<String>,
+    #[serde(default)]
+    pub paused_at: Option<String>,
+    #[serde(default)]
+    pub total_paused: i64,
 }
 
 impl TimeEntry {
@@ -21,10 +25,15 @@ impl TimeEntry {
             ended_at: None,
             minutes: None,
             notes: None,
+            paused_at: None,
+            total_paused: 0,
         }
     }
 
     pub fn is_active(&self) -> bool {
         self.ended_at.is_none()
+    }
+    pub fn is_paused(&self) -> bool {
+        self.paused_at.is_some()
     }
 }

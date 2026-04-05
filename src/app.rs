@@ -1,7 +1,8 @@
 use crate::data::entry::TimeEntry;
 use crate::data::store::{self, AppData};
-use crate::data::task::Task as AppTask;
-use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input};
+use crate::data::task::{Task as AppTask, TaskStatus};
+use chrono::{DateTime, Utc};
+use iced::widget::{button, checkbox, column, container, row, scrollable, stack, text, text_input};
 use iced::{Element, Length, Task};
 use uuid::Uuid;
 
@@ -18,6 +19,11 @@ pub struct App {
     edit_urgent: bool,
     edit_important: bool,
     edit_description: String,
+
+    // Stop prompt modal state
+    stop_prompt_open: bool,
+    stop_prompt_note: String,
+    stop_prompt_status: TaskStatus,
 }
 
 // --- The Message enum ---
@@ -30,7 +36,8 @@ pub enum Message {
     SubmitNewTask,
     StartTimer(Uuid),
     CycleStatus(Uuid),
-    StopTimer,
+    PauseTimer,
+    ResumeTimer,
     OpenReview,
 
     // Edit task panel
@@ -40,6 +47,13 @@ pub enum Message {
     EditImportantChanged(bool),
     EditDescriptionChanged(String),
     SaveEditTask,
+
+    // Stop prompt modal
+    OpenStopPrompt,
+    StopPromptNoteChange(String),
+    StopPromptStatusChanged(TaskStatus),
+    ConfirmStop,
+    CancelStop,
 }
 
 // --- The App implementation ---
@@ -61,11 +75,16 @@ impl App {
             active_entry,
             new_task_input: String::new(),
 
-            // Edit task panel - all None or Empty when no task is beeing edited
+            // Edit task panel - all None or Empty when no task is being edited
             editing_task_id: None,
             edit_urgent: false,
             edit_important: false,
             edit_description: String::new(),
+
+            // Stop prompt modal state
+            stop_prompt_open: false,
+            stop_prompt_note: String::new(),
+            stop_prompt_status: TaskStatus::Todo, // Overwritten when the prompt opens
         };
 
         // Task::none() is returned because there are no async tasks to kick off
@@ -97,16 +116,25 @@ impl App {
 
             // --- Timer messages ---
             Message::StartTimer(task_id) => {
-                self.stop_active_timer();
-                let entry = TimeEntry::new(task_id);
-                self.active_entry = Some(entry.clone());
-                self.entries.push(entry);
-                self.save();
+                let already_tracking = self
+                    .active_entry
+                    .as_ref()
+                    .is_some_and(|e| e.task_id == task_id);
+
+                if !already_tracking {
+                    if self.active_entry.is_some() {
+                        self.stop_prompt_open = false;
+                        self.stop_prompt_note.clear();
+                        self.stop_active_timer(None);
+                    }
+                    let entry = TimeEntry::new(task_id);
+                    self.active_entry = Some(entry.clone());
+                    self.entries.push(entry);
+                    self.save()
+                }
             }
-            Message::StopTimer => {
-                self.stop_active_timer();
-                self.save();
-            }
+            Message::PauseTimer => self.pause_active_timer(),
+            Message::ResumeTimer => self.resume_active_timer(),
             Message::Tick => {}
 
             // --- UI messages ---
@@ -159,18 +187,71 @@ impl App {
                 self.edit_description.clear();
                 self.save();
             }
+
+            // Stop prompt modal
+            Message::OpenStopPrompt => {
+                // Defaults to next status unless explicitly told otherwise - on error reading the status, it defaults to Todo
+                let next_status = self
+                    .active_entry
+                    .as_ref()
+                    .and_then(|e| self.tasks.iter().find(|t| t.id == e.task_id))
+                    .map(|t| t.status.next())
+                    .unwrap_or(TaskStatus::Todo);
+
+                self.stop_prompt_open = true;
+                self.stop_prompt_note.clear();
+                self.stop_prompt_status = next_status;
+                self.pause_active_timer();
+            }
+            Message::StopPromptNoteChange(value) => {
+                self.stop_prompt_note = value;
+            }
+            Message::StopPromptStatusChanged(status) => {
+                self.stop_prompt_status = status;
+            }
+            Message::ConfirmStop => {
+                let note = {
+                    let s = self.stop_prompt_note.trim().to_string();
+                    if s.is_empty() { None } else { Some(s) }
+                };
+                let new_status = self.stop_prompt_status.clone();
+
+                let current_entry_task_id = self.active_entry.clone().unwrap().task_id;
+                self.stop_active_timer(note);
+
+                if let Some(task) = self
+                    .tasks
+                    .iter_mut()
+                    .find(|t| t.id == current_entry_task_id)
+                {
+                    task.status = new_status;
+                }
+
+                self.stop_prompt_open = false;
+                self.stop_prompt_note.clear();
+                self.save();
+            }
+            Message::CancelStop => {
+                self.stop_prompt_open = false;
+                self.stop_prompt_note.clear();
+                self.resume_active_timer();
+            }
         }
         Task::none()
     }
 
     // view() is called to render the app's UI
     pub fn view(&self) -> Element<'_, Message> {
-        let content = column![self.timer_bar(), self.task_list(), self.status_bar(),].spacing(0);
+        let base =
+            container(column![self.timer_bar(), self.task_list(), self.status_bar(),].spacing(0))
+                .width(Length::Fill)
+                .height(Length::Fill);
 
-        container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        if self.stop_prompt_open {
+            stack![base, self.stop_prompt_view(),].into()
+        } else {
+            base.into()
+        }
     }
 
     // timer_bar is the UI Element that displays the active timer, if any
@@ -183,11 +264,22 @@ impl App {
                     .find(|t| t.id == entry.task_id)
                     .map(|t| t.name.as_str())
                     .unwrap_or("Unknown Task");
-                let elapsed = Self::elapsed_display(&entry.started_at);
+                let elapsed = Self::elapsed_display(
+                    &entry.started_at,
+                    entry.paused_at.as_deref(),
+                    entry.total_paused,
+                );
+
+                let pause_resume_btn = if entry.is_paused() {
+                    button(text("Resume")).on_press(Message::ResumeTimer)
+                } else {
+                    button(text("Pause")).on_press(Message::PauseTimer)
+                };
 
                 row![
                     text(format!("{task_name} - {elapsed}")).width(Length::Fill),
-                    button(text("Stop")).on_press(Message::StopTimer),
+                    pause_resume_btn,
+                    button(text("Stop")).on_press(Message::OpenStopPrompt),
                 ]
                 .padding(12)
                 .spacing(8)
@@ -311,11 +403,58 @@ impl App {
         .into()
     }
 
+    // --- Stop prompt modal ---
+    fn stop_prompt_view(&self) -> Element<'_, Message> {
+        let task_name = self
+            .active_entry
+            .as_ref()
+            .and_then(|e| self.tasks.iter().find(|t| t.id == e.task_id))
+            .map(|t| t.name.as_str())
+            .unwrap_or("Unkown task");
+
+        let status_row = row![
+            button(text("To do")).on_press(Message::StopPromptStatusChanged(TaskStatus::Todo)),
+            button(text("In Progress"))
+                .on_press(Message::StopPromptStatusChanged(TaskStatus::InProgress)),
+            button(text("Done")).on_press(Message::StopPromptStatusChanged(TaskStatus::Done)),
+        ]
+        .spacing(8);
+
+        let panel = column![
+            text(format!("Stopping: {task_name}")),
+            text_input("what did you accomplish?", &self.stop_prompt_note)
+                .on_input(Message::StopPromptNoteChange)
+                .on_submit(Message::ConfirmStop),
+            status_row,
+            text(format!("Mark as: {}", self.stop_prompt_status.label())),
+            row![
+                button(text("Stop and save")).on_press(Message::ConfirmStop),
+                button(text("Cancel")).on_press(Message::CancelStop),
+            ]
+            .spacing(8),
+        ]
+        .spacing(12)
+        .padding(24);
+
+        container(panel)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+    }
+
     // Subscription defines the iced Subscription for the app (currently none)
     // this is used to listen to a stream of messages from the OS or other sources
     // for example, a timer tick
     pub fn subscription(&self) -> iced::Subscription<Message> {
-        if self.active_entry.is_some() {
+        let should_tick = self
+            .active_entry
+            .as_ref()
+            .map(|e| !e.is_paused())
+            .unwrap_or(false);
+
+        if should_tick {
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick)
         } else {
             iced::Subscription::none()
@@ -334,24 +473,29 @@ impl App {
         }
     }
 
-    fn stop_active_timer(&mut self) {
+    fn stop_active_timer(&mut self, note: Option<String>) {
         // The take() method removes the active entry from self.active_entry and returns it
         // this way self.active_entry is None while the entry is available for updating
         if let Some(mut entry) = self.active_entry.take() {
             use chrono::{DateTime, Utc};
             let now = Utc::now();
-            // capture the current time as the end time
-            entry.ended_at = Some(now.to_rfc3339());
+            if let Some(paused_at_str) = &entry.paused_at {
+                if let Ok(paused_at) = DateTime::parse_from_rfc3339(paused_at_str) {
+                    let this_pause = (now - paused_at.with_timezone(&Utc)).num_minutes().max(0);
+                    entry.total_paused += this_pause;
+                }
+            }
 
             // Parse the start time from the entry
             let started = DateTime::parse_from_rfc3339(&entry.started_at)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or(now);
 
-            // Calculate the elapsed minutes and update the entry
-            // using max(0) to ensure the result is non-negative
-            entry.minutes = Some((now - started).num_minutes().max(0));
-
+            let gross_minutes = (now - started).num_minutes().max(0);
+            entry.ended_at = Some(now.to_rfc3339());
+            entry.minutes = Some((gross_minutes - entry.total_paused).max(0));
+            entry.notes = note;
+            entry.paused_at = None;
             // Update the existing entry if it exists
             if let Some(existing) = self.entries.iter_mut().find(|e| e.id == entry.id) {
                 *existing = entry;
@@ -359,16 +503,27 @@ impl App {
         }
     }
 
-    fn elapsed_display(started_at: &str) -> String {
+    fn elapsed_display(started_at: &str, paused_at: Option<&str>, paused_minutes: i64) -> String {
         use chrono::{DateTime, Utc};
         let started = DateTime::parse_from_rfc3339(started_at)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
-        let secs = (Utc::now() - started).num_seconds().max(0);
 
-        let h = secs / 3600;
-        let m = (secs % 3600) / 60;
-        let s = secs % 60;
+        let effective_now = if let Some(p) = paused_at {
+            DateTime::parse_from_rfc3339(p)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now())
+        } else {
+            Utc::now()
+        };
+
+        let gross_secs = (effective_now - started).num_seconds().max(0);
+        let pause_secs = paused_minutes * 60;
+        let net_secs = (gross_secs - pause_secs).max(0);
+
+        let h = net_secs / 3600;
+        let m = (net_secs % 3600) / 60;
+        let s = net_secs % 60;
         if h > 0 {
             format!("{h}h {m}m {s}s")
         } else {
@@ -398,5 +553,33 @@ impl App {
             .unwrap_or(0);
 
         completed + active
+    }
+
+    fn pause_active_timer(&mut self) {
+        if let Some(entry) = self.active_entry.as_mut() {
+            if entry.paused_at.is_none() {
+                entry.paused_at = Some(Utc::now().to_rfc3339());
+                if let Some(existing) = self.entries.iter_mut().find(|e| e.id == entry.id) {
+                    *existing = entry.clone();
+                }
+            }
+        }
+    }
+
+    fn resume_active_timer(&mut self) {
+        if let Some(entry) = self.active_entry.as_mut() {
+            if let Some(paused_at_str) = entry.paused_at.take() {
+                use chrono::{DateTime, Utc};
+                if let Ok(paused_at) = DateTime::parse_from_rfc3339(&paused_at_str) {
+                    let this_pause = (Utc::now() - paused_at.with_timezone(&Utc))
+                        .num_minutes()
+                        .max(0);
+                    entry.total_paused += this_pause;
+                }
+                if let Some(existing) = self.entries.iter_mut().find(|e| e.id == entry.id) {
+                    *existing = entry.clone();
+                }
+            }
+        }
     }
 }
