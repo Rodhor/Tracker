@@ -6,6 +6,10 @@ use iced::widget::{button, checkbox, column, container, row, scrollable, stack, 
 use iced::{Element, Length, Task};
 use uuid::Uuid;
 
+enum ReviewRow {
+    Entry { entry: TimeEntry, task_name: String },
+    Gap { minutes: i64 },
+}
 // --- The Model ---
 
 pub struct App {
@@ -24,6 +28,21 @@ pub struct App {
     stop_prompt_open: bool,
     stop_prompt_note: String,
     stop_prompt_status: TaskStatus,
+
+    // Screens
+    // which top-level screen is shown
+    screen: Screen,
+
+    // Review view state
+    review_date: chrono::NaiveDate,
+    editing_note_id: Option<Uuid>,
+    editing_note_text: String,
+}
+// --- Screens ---
+#[derive(Debug, Clone, PartialEq)]
+pub enum Screen {
+    Tracker,
+    Review,
 }
 
 // --- The Message enum ---
@@ -31,6 +50,8 @@ pub struct App {
 // This Enum contains the possible messages that can be sent to the App
 #[derive(Debug, Clone)]
 pub enum Message {
+    // --- Tracker screen ---
+    // Defaults
     Tick,
     TaskNameChanged(String),
     SubmitNewTask,
@@ -54,6 +75,18 @@ pub enum Message {
     StopPromptStatusChanged(TaskStatus),
     ConfirmStop,
     CancelStop,
+
+    // --- Review screen ---
+    // Navigation
+    CloseReview,
+    ReviewPrevDay,
+    ReviewNextDay,
+
+    // Inline note editing
+    OpenEditNote(Uuid),
+    EditNoteChanged(String),
+    SaveEditNote,
+    CancelEditNote,
 }
 
 // --- The App implementation ---
@@ -70,6 +103,10 @@ impl App {
         // Iterates through the entries and finds the active one, if any - clones the entry and returns it to the caller
         let active_entry = data.entries.iter().find(|entry| entry.is_active()).cloned();
         let app = Self {
+            // Screens
+            screen: Screen::Tracker,
+
+            // --- Tracker screen ---
             tasks: data.tasks,
             entries: data.entries,
             active_entry,
@@ -85,6 +122,11 @@ impl App {
             stop_prompt_open: false,
             stop_prompt_note: String::new(),
             stop_prompt_status: TaskStatus::Todo, // Overwritten when the prompt opens
+
+            // --- Review screen ---
+            review_date: chrono::Utc::now().date_naive(),
+            editing_note_id: None,
+            editing_note_text: String::new(),
         };
 
         // Task::none() is returned because there are no async tasks to kick off
@@ -95,6 +137,7 @@ impl App {
     // update() is the only public method that modifies the app's state
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            // === Tracker screen ===
             // --- Task messages ---
             Message::TaskNameChanged(value) => {
                 self.new_task_input = value;
@@ -136,9 +179,6 @@ impl App {
             Message::PauseTimer => self.pause_active_timer(),
             Message::ResumeTimer => self.resume_active_timer(),
             Message::Tick => {}
-
-            // --- UI messages ---
-            Message::OpenReview => {} // Edit Panel
 
             // Edit task panel
             Message::OpenEditTask(task_id) => {
@@ -231,17 +271,83 @@ impl App {
                 self.stop_prompt_note.clear();
                 self.save();
             }
+
             Message::CancelStop => {
                 self.stop_prompt_open = false;
                 self.stop_prompt_note.clear();
                 self.resume_active_timer();
             }
+
+            // === Review screen ===
+            Message::OpenReview => {
+                self.screen = Screen::Review;
+                self.review_date = chrono::Utc::now().date_naive();
+                self.editing_note_id = None;
+                self.editing_note_text.clear();
+            }
+            Message::CloseReview => {
+                self.screen = Screen::Tracker;
+                self.editing_note_id = None;
+                self.editing_note_text.clear();
+            }
+            Message::ReviewPrevDay => {
+                self.review_date = self.review_date.pred_opt().unwrap_or(self.review_date);
+                // Clear currently navigated edits to avoid conflicts
+                self.editing_note_id = None;
+                self.editing_note_text.clear();
+            }
+            // This only moves up until the current day - it does not work for future days
+            Message::ReviewNextDay => {
+                let today = chrono::Utc::now().date_naive();
+                if self.review_date < today {
+                    self.review_date = self.review_date.succ_opt().unwrap_or(self.review_date);
+                    self.editing_note_id = None;
+                    self.editing_note_text.clear();
+                }
+            }
+
+            Message::OpenEditNote(entry_id) => {
+                let current_note = self
+                    .entries
+                    .iter()
+                    .find(|e| e.id == entry_id)
+                    .and_then(|e| e.notes.clone())
+                    .unwrap_or_default();
+                self.editing_note_id = Some(entry_id);
+                self.editing_note_text = current_note;
+            }
+            Message::EditNoteChanged(value) => {
+                self.editing_note_text = value;
+            }
+            Message::SaveEditNote => {
+                if let Some(id) = self.editing_note_id {
+                    let note = {
+                        let s = self.editing_note_text.trim().to_string();
+                        if s.is_empty() { None } else { Some(s) }
+                    };
+                    if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+                        entry.notes = note;
+                    }
+                    self.editing_note_id = None;
+                    self.editing_note_text.clear();
+                    self.save();
+                }
+            }
+            Message::CancelEditNote => {
+                self.editing_note_id = None;
+                self.editing_note_text.clear();
+            }
         }
+
         Task::none()
     }
 
     // view() is called to render the app's UI
     pub fn view(&self) -> Element<'_, Message> {
+        match self.screen {
+            Screen::Review => return self.review_screen(),
+            Screen::Tracker => {}
+        }
         let base =
             container(column![self.timer_bar(), self.task_list(), self.status_bar(),].spacing(0))
                 .width(Length::Fill)
@@ -444,6 +550,147 @@ impl App {
             .into()
     }
 
+    // === Review screen ===
+    fn review_screen(&self) -> Element<'_, Message> {
+        let today = chrono::Utc::now().date_naive();
+        let date_label = if self.review_date == today {
+            format!("Today - {}", self.review_date.format("%A, %-d %B %Y"))
+        } else {
+            self.review_date.format("%A, %-d %B %Y").to_string()
+        };
+
+        let header = row![
+            button(text("<- Prev")).on_press(Message::ReviewPrevDay),
+            text(date_label).width(Length::Fill),
+            button(text("Next ->"))
+                .on_press_maybe((self.review_date < today).then_some(Message::ReviewNextDay),),
+            button(text("Close")).on_press(Message::CloseReview),
+        ]
+        .padding(12)
+        .spacing(8);
+
+        let rows = self.build_review_rows();
+        let mut total_tracked: i64 = 0;
+        let mut total_gap: i64 = 0;
+        let mut first_start: Option<String> = None;
+        let mut last_end: Option<String> = None;
+        let mut items: Vec<Element<Message>> = Vec::new();
+        if rows.is_empty() {
+            items.push(
+                container(text("No entries for this day."))
+                    .padding(20)
+                    .into(),
+            );
+        }
+
+        for row_item in rows {
+            match row_item {
+                ReviewRow::Entry { entry, task_name } => {
+                    let start_str = Self::format_hhmm(&entry.started_at);
+                    let end_str = entry
+                        .ended_at
+                        .as_deref()
+                        .map(Self::format_hhmm)
+                        .unwrap_or_else(|| "currently active".to_string());
+                    let net_min = entry.minutes.unwrap_or_else(|| {
+                        DateTime::parse_from_rfc3339(&entry.started_at)
+                            .map(|dt| (Utc::now() - dt.with_timezone(&Utc)).num_minutes().max(0))
+                            .unwrap_or(0)
+                    });
+                    let h = net_min / 60;
+                    let m = net_min % 60;
+                    let duration_label = if h > 0 {
+                        format! {"{h}h {m}m"}
+                    } else {
+                        format!("{m}m")
+                    };
+
+                    let pause_label = if entry.total_paused > 0 {
+                        format!("({} min paused)", entry.total_paused)
+                    } else {
+                        String::new()
+                    };
+
+                    total_tracked += net_min;
+                    if first_start.is_none() {
+                        first_start = Some(start_str.clone());
+                    };
+                    last_end = Some(end_str.clone());
+
+                    let note_widget: Element<Message> = if self.editing_note_id == Some(entry.id) {
+                        row![
+                            text_input("Add a note...", &self.editing_note_text)
+                                .on_input(Message::EditNoteChanged)
+                                .on_submit(Message::SaveEditNote)
+                                .width(Length::Fill),
+                            button(text("Save")).on_press(Message::SaveEditNote),
+                            button(text("Cancel")).on_press(Message::CancelEditNote),
+                        ]
+                        .spacing(4)
+                        .into()
+                    } else {
+                        let note_text = entry.notes.clone().unwrap_or_else(|| "-".to_string());
+                        row![
+                            text(note_text).width(Length::Fill),
+                            button(text("Edit")).on_press(Message::OpenEditNote(entry.id)),
+                        ]
+                        .spacing(4)
+                        .into()
+                    };
+
+                    let entry_row = row![
+                        text(task_name).width(Length::FillPortion(3)),
+                        text(format!("{start_str} -> {end_str}")).width(Length::FillPortion(2)),
+                        text(format!("{duration_label} {pause_label}"))
+                            .width(Length::FillPortion(2)),
+                        note_widget,
+                    ]
+                    .padding(8)
+                    .spacing(8);
+
+                    items.push(entry_row.into());
+                }
+                ReviewRow::Gap { minutes } => {
+                    let h = minutes / 60;
+                    let m = minutes % 60;
+                    let gap_label = if h > 0 {
+                        format!("⊘  Untracked — {h}h {m}m")
+                    } else {
+                        format!("⊘  Untracked — {m}m")
+                    };
+                    total_gap += minutes;
+                    items.push(
+                        container(text(gap_label))
+                            .padding(iced::Padding::new(4.0).left(16))
+                            .into(),
+                    );
+                }
+            }
+        }
+        let first_str = first_start.as_deref().unwrap_or("-");
+        let last_str = last_end.as_deref().unwrap_or("-");
+        let tracked_h = total_tracked / 60;
+        let tracked_m = total_tracked % 60;
+        let gap_h = total_gap / 60;
+        let gap_m = total_gap % 60;
+
+        let summary = row![
+            text(format!("First: {first_str}")),
+            text(format!("Last: {last_str}")),
+            text(format!("Tracked: {tracked_h}h {tracked_m}m")),
+            text(format!("Untracked: {gap_h}h {gap_m}m")),
+        ]
+        .padding(8)
+        .spacing(16);
+
+        column![
+            header,
+            scrollable(column(items).spacing(2).height(Length::Fill)),
+            summary,
+        ]
+        .into()
+    }
+
     // Subscription defines the iced Subscription for the app (currently none)
     // this is used to listen to a stream of messages from the OS or other sources
     // for example, a timer tick
@@ -477,7 +724,6 @@ impl App {
         // The take() method removes the active entry from self.active_entry and returns it
         // this way self.active_entry is None while the entry is available for updating
         if let Some(mut entry) = self.active_entry.take() {
-            use chrono::{DateTime, Utc};
             let now = Utc::now();
             if let Some(paused_at_str) = &entry.paused_at {
                 if let Ok(paused_at) = DateTime::parse_from_rfc3339(paused_at_str) {
@@ -504,7 +750,6 @@ impl App {
     }
 
     fn elapsed_display(started_at: &str, paused_at: Option<&str>, paused_minutes: i64) -> String {
-        use chrono::{DateTime, Utc};
         let started = DateTime::parse_from_rfc3339(started_at)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
@@ -532,7 +777,6 @@ impl App {
     }
 
     fn today_total_minutes(&self) -> i64 {
-        use chrono::{DateTime, Utc};
         let today = Utc::now().format("%Y-%m-%d").to_string();
         let completed: i64 = self
             .entries
@@ -569,7 +813,6 @@ impl App {
     fn resume_active_timer(&mut self) {
         if let Some(entry) = self.active_entry.as_mut() {
             if let Some(paused_at_str) = entry.paused_at.take() {
-                use chrono::{DateTime, Utc};
                 if let Ok(paused_at) = DateTime::parse_from_rfc3339(&paused_at_str) {
                     let this_pause = (Utc::now() - paused_at.with_timezone(&Utc))
                         .num_minutes()
@@ -581,5 +824,68 @@ impl App {
                 }
             }
         }
+    }
+
+    fn format_hhmm(rfc3339: &str) -> String {
+        DateTime::parse_from_rfc3339(rfc3339)
+            .map(|dt| dt.with_timezone(&Utc).format("%H:%M").to_string())
+            .unwrap_or_else(|_| "??:??".to_string())
+    }
+
+    fn build_review_rows(&self) -> Vec<ReviewRow> {
+        let date_str = self.review_date.format("%Y-%m-%d").to_string();
+        let mut day_entries: Vec<TimeEntry> = self
+            .entries
+            .iter()
+            .filter(|e| {
+                e.started_at.starts_with(&date_str) && (e.ended_at.is_some() || e.is_active())
+            })
+            .cloned()
+            .collect();
+
+        if let Some(active) = &self.active_entry {
+            if active.started_at.starts_with(&date_str) {
+                if !day_entries.iter().any(|e| e.id == active.id) {
+                    day_entries.push(active.clone());
+                }
+            }
+        }
+
+        // Uses cmp to sort entries chronologically
+        day_entries.sort_by(|a, b| a.started_at.cmp(&b.started_at));
+
+        let mut rows: Vec<ReviewRow> = Vec::new();
+        let mut prev_end: Option<DateTime<Utc>> = None;
+
+        for entry in day_entries {
+            if let Some(prev) = prev_end {
+                if let Ok(this_start) = DateTime::parse_from_rfc3339(&entry.started_at) {
+                    let gap_minutes = (this_start.with_timezone(&Utc) - prev).num_minutes();
+                    if gap_minutes >= 5 {
+                        rows.push(ReviewRow::Gap {
+                            minutes: gap_minutes,
+                        });
+                    }
+                }
+            }
+
+            if let Some(ended) = &entry.ended_at {
+                if let Ok(dt) = DateTime::parse_from_rfc3339(ended) {
+                    prev_end = Some(dt.with_timezone(&Utc));
+                }
+            } else {
+                prev_end = Some(Utc::now());
+            }
+
+            let task_name = self
+                .tasks
+                .iter()
+                .find(|t| t.id == entry.task_id)
+                .map(|t| t.name.clone())
+                .unwrap_or_else(|| "Unknown Task".to_string());
+
+            rows.push(ReviewRow::Entry { entry, task_name });
+        }
+        rows
     }
 }
