@@ -13,6 +13,7 @@ enum ReviewRow {
 // --- The Model ---
 
 pub struct App {
+    // Base
     tasks: Vec<AppTask>,
     entries: Vec<TimeEntry>,
     active_entry: Option<TimeEntry>,
@@ -29,14 +30,18 @@ pub struct App {
     stop_prompt_note: String,
     stop_prompt_status: TaskStatus,
 
-    // Screens
-    // which top-level screen is shown
-    screen: Screen,
-
     // Review view state
     review_date: chrono::NaiveDate,
     editing_note_id: Option<Uuid>,
     editing_note_text: String,
+
+    // Delete confirmation
+    deleting_entry_id: Option<Uuid>,
+    deleting_task_id: Option<Uuid>,
+
+    // Screens
+    // which top-level screen is shown
+    screen: Screen,
 }
 // --- Screens ---
 #[derive(Debug, Clone, PartialEq)]
@@ -69,6 +74,11 @@ pub enum Message {
     EditDescriptionChanged(String),
     SaveEditTask,
 
+    // Deletion
+    RequestDeleteTask(Uuid),
+    ConfirmDeleteTask,
+    CancelDeleteTask,
+
     // Stop prompt modal
     OpenStopPrompt,
     StopPromptNoteChange(String),
@@ -87,6 +97,11 @@ pub enum Message {
     EditNoteChanged(String),
     SaveEditNote,
     CancelEditNote,
+
+    // Deletion
+    RequestDeleteEntry(Uuid),
+    ConfirmDeleteEntry,
+    CancelDeleteEntry,
 }
 
 // --- The App implementation ---
@@ -122,6 +137,10 @@ impl App {
             stop_prompt_open: false,
             stop_prompt_note: String::new(),
             stop_prompt_status: TaskStatus::Todo, // Overwritten when the prompt opens
+
+            // Deletion
+            deleting_entry_id: None,
+            deleting_task_id: None,
 
             // --- Review screen ---
             review_date: chrono::Utc::now().date_naive(),
@@ -182,6 +201,7 @@ impl App {
 
             // Edit task panel
             Message::OpenEditTask(task_id) => {
+                self.deleting_task_id = None;
                 // copy task into temporary fields for editing
                 if let Some(task) = self.tasks.iter().find(|t| t.id == task_id) {
                     self.editing_task_id = Some(task.id);
@@ -307,6 +327,7 @@ impl App {
             }
 
             Message::OpenEditNote(entry_id) => {
+                self.deleting_entry_id = None;
                 let current_note = self
                     .entries
                     .iter()
@@ -336,6 +357,55 @@ impl App {
             Message::CancelEditNote => {
                 self.editing_note_id = None;
                 self.editing_note_text.clear();
+            }
+
+            Message::RequestDeleteEntry(entry_id) => {
+                self.editing_note_id = None;
+                self.editing_note_text.clear();
+                self.deleting_entry_id = Some(entry_id);
+            }
+            Message::ConfirmDeleteEntry => {
+                if let Some(id) = self.deleting_entry_id {
+                    self.entries.retain(|e| e.id != id);
+                    self.deleting_entry_id = None;
+                    self.save();
+                }
+            }
+            Message::CancelDeleteEntry => {
+                self.deleting_entry_id = None;
+            }
+            Message::RequestDeleteTask(task_id) => {
+                self.editing_task_id = None;
+                self.edit_description.clear();
+                self.deleting_task_id = Some(task_id);
+            }
+            Message::ConfirmDeleteTask => {
+                if let Some(id) = self.deleting_task_id {
+                    // If the active timer is for the deleted task, discard it silently
+                    if self.active_entry.as_ref().is_some_and(|e| e.task_id == id) {
+                        self.active_entry = None;
+                        self.stop_prompt_open = false;
+                        self.stop_prompt_note.clear();
+                    }
+
+                    // Cascade: remove all entries that belonged to the deleted task
+                    self.entries.retain(|e| e.task_id != id);
+                    // Delete the task itself
+                    self.tasks.retain(|e| e.id != id);
+                    self.deleting_task_id = None;
+                    self.save();
+                }
+            }
+            Message::CancelDeleteTask => {
+                if let Some(id) = self.deleting_task_id {
+                    if let Some(task) = self.tasks.iter().find(|t| t.id == id) {
+                        self.editing_task_id = Some(task.id);
+                        self.edit_urgent = task.urgent;
+                        self.edit_important = task.important;
+                        self.edit_description = task.description.clone().unwrap_or_default();
+                    }
+                }
+                self.deleting_task_id = None;
             }
         }
 
@@ -442,7 +512,9 @@ impl App {
     }
 
     fn task_row_or_edit<'a>(&'a self, task: &'a AppTask) -> Element<'a, Message> {
-        if self.editing_task_id == Some(task.id) {
+        if self.deleting_task_id == Some(task.id) {
+            self.delete_task_confirm_row(task)
+        } else if self.editing_task_id == Some(task.id) {
             self.edit_row(task)
         } else {
             self.task_row(task)
@@ -488,7 +560,8 @@ impl App {
             row![
                 text(&task.name).width(Length::Fill),
                 button(text("Save")).on_press(Message::SaveEditTask),
-                button(text("Cancel")).on_press(Message::CloseEditTask)
+                button(text("Cancel")).on_press(Message::CloseEditTask),
+                button(text("Delete")).on_press(Message::RequestDeleteTask(task.id))
             ]
             .spacing(8),
             row![
@@ -506,6 +579,26 @@ impl App {
         ]
         .padding(8)
         .spacing(4)
+        .into()
+    }
+
+    // Delete task confirmation
+    fn delete_task_confirm_row<'a>(&'a self, task: &'a AppTask) -> Element<'a, Message> {
+        let entry_count = self.entries.iter().filter(|e| e.task_id == task.id).count();
+        let warning = if entry_count == 1 {
+            format!("Delete '{}' and 1 time entry?", task.name)
+        } else if entry_count > 1 {
+            format!("Delete '{}' and {} time entries?", task.name, entry_count)
+        } else {
+            format!("Delete '{}'?", task.name)
+        };
+        row![
+            text(warning).width(Length::Fill),
+            button(text("Confirm delete")).on_press(Message::ConfirmDeleteTask),
+            button(text("Cancel")).on_press(Message::CancelDeleteTask),
+        ]
+        .padding(8)
+        .spacing(8)
         .into()
     }
 
@@ -617,6 +710,19 @@ impl App {
                     };
                     last_end = Some(end_str.clone());
 
+                    if self.deleting_entry_id == Some(entry.id) {
+                        let confirm_row = row![
+                            text(format!("Delete '{task_name}' ({start_str} -> {end_str})?"))
+                                .width(Length::Fill),
+                            button(text("Confirm delete")).on_press(Message::ConfirmDeleteEntry),
+                            button(text("Cancel")).on_press(Message::CancelDeleteEntry)
+                        ]
+                        .padding(8)
+                        .spacing(8);
+                        items.push(confirm_row.into());
+                        continue; // skip the rest of the current loop
+                    }
+
                     let note_widget: Element<Message> = if self.editing_note_id == Some(entry.id) {
                         row![
                             text_input("Add a note...", &self.editing_note_text)
@@ -629,10 +735,17 @@ impl App {
                         .spacing(4)
                         .into()
                     } else {
+                        // Regular row - note widget and delete button
                         let note_text = entry.notes.clone().unwrap_or_else(|| "-".to_string());
                         row![
                             text(note_text).width(Length::Fill),
                             button(text("Edit")).on_press(Message::OpenEditNote(entry.id)),
+                            button(text("Delete")).on_press_maybe(
+                                entry
+                                    .ended_at
+                                    .as_ref()
+                                    .map(|_| Message::RequestDeleteEntry(entry.id))
+                            ),
                         ]
                         .spacing(4)
                         .into()
