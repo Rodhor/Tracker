@@ -1,6 +1,6 @@
 use crate::app::{App, Message};
 use crate::data::entry::TimeEntry;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
 use iced::{Element, Length};
 
@@ -170,7 +170,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
 // Parses an RFC3339 timestamp and formats it as HH:MM in UTC
 pub fn format_hhmm(rfc3339: &str) -> String {
     DateTime::parse_from_rfc3339(rfc3339)
-        .map(|dt| dt.with_timezone(&Utc).format("%H:%M").to_string())
+        .map(|dt| dt.with_timezone(&Local).format("%H:%M").to_string())
         .unwrap_or_else(|_| "??:??".to_string())
 }
 
