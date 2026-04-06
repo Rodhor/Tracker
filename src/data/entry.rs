@@ -1,3 +1,4 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -10,14 +11,13 @@ pub struct TimeEntry {
     pub minutes: Option<i64>,
     pub notes: Option<String>,
     #[serde(default)]
-    pub paused_at: Option<String>,
+    pub paused_at: Option<String>, // set when paused, cleared on resume
     #[serde(default)]
-    pub total_paused: i64,
+    pub total_paused: i64, // accumulated pause duration in minutes
 }
 
 impl TimeEntry {
     pub fn new(task_id: Uuid) -> Self {
-        use chrono::Utc;
         Self {
             id: Uuid::new_v4(),
             task_id,
@@ -33,6 +33,7 @@ impl TimeEntry {
     pub fn is_active(&self) -> bool {
         self.ended_at.is_none()
     }
+
     pub fn is_paused(&self) -> bool {
         self.paused_at.is_some()
     }

@@ -13,7 +13,8 @@ pub struct AppData {
     pub entries: Vec<TimeEntry>,
 }
 
-// Create path to data file
+// Data is persisted to ~/.tracker/data.json as pretty-printed JSON.
+
 pub fn data_path() -> PathBuf {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     let dir = home.join(".tracker");
@@ -22,37 +23,18 @@ pub fn data_path() -> PathBuf {
 }
 
 pub fn load_data() -> Result<AppData, String> {
-    // Retrieve the path
     let path = data_path();
-
-    // If the file does not exist, return an empty AppData
     if !path.exists() {
         return Ok(AppData::default());
     }
-
-    // Try to read the file content, return an error as string if it fails
     let content =
         fs::read_to_string(&path).map_err(|e| format!("Failed to read data file: {e}"))?;
-
-    // Try to parse the content into an AppData struct, return an error as string if it fails
-    let data: AppData =
-        serde_json::from_str(&content).map_err(|e| format!("Failed to parse data file: {e}"))?;
-
-    // If successful, return the parsed data
-    Ok(data)
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse data file: {e}"))
 }
 
 pub fn save_data(data: &AppData) -> Result<(), String> {
-    // Retrieve the path
     let path = data_path();
-
-    // Try to serialize the data into a JSON string, return an error as string if it fails
     let content =
         serde_json::to_string_pretty(data).map_err(|e| format!("Failed to serialize data: {e}"))?;
-
-    // Try to write the serialized data to the file, return an error as string if it fails
-    fs::write(&path, content).map_err(|e| format!("Failed to write data file: {e}"))?;
-
-    // If successful, return empty Ok value
-    Ok(())
+    fs::write(&path, content).map_err(|e| format!("Failed to write data file: {e}"))
 }

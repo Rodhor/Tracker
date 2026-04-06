@@ -1,5 +1,8 @@
 mod app;
 mod data;
+mod message;
+mod timer;
+mod ui;
 
 use app::App;
 

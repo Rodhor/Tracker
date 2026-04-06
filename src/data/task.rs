@@ -2,7 +2,6 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// Enum to represent the status of a task
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TaskStatus {
     Todo,
@@ -11,7 +10,7 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
-    // Returns the next status for a task - Circleling around one Done
+    // Cycles: Todo → InProgress → Done → Todo
     pub fn next(&self) -> TaskStatus {
         match self {
             TaskStatus::Todo => TaskStatus::InProgress,
@@ -24,7 +23,6 @@ impl TaskStatus {
         TaskStatus::Todo
     }
 
-    // Returns the label for a task status for usage in UI
     pub fn label(&self) -> &'static str {
         match self {
             TaskStatus::Todo => "To Do",
@@ -61,8 +59,7 @@ impl Task {
         }
     }
 
-    // Returns the quadrant for a task - 1 for urgent and important, 2 for not urgent and important, etc.
-    // Used for sorting tasks in the UI with the Eisenhower matrix.
+    // Eisenhower quadrant: 1 = urgent+important, 2 = important only, 3 = urgent only, 4 = neither
     pub fn quadrant(&self) -> u8 {
         match (self.urgent, self.important) {
             (true, true) => 1,
@@ -72,7 +69,7 @@ impl Task {
         }
     }
 
-    // Will be used to determine if a task has already been sorted or not.
+    // True once at least one priority flag is set — separates sorted from unsorted in the list
     pub fn has_priority(&self) -> bool {
         self.urgent || self.important
     }
