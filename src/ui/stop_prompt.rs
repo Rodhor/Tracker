@@ -3,6 +3,7 @@ use crate::data::task::TaskStatus;
 use iced::widget::{button, container, pick_list, row, text, text_editor};
 use iced::{Element, Length};
 
+pub const STOP_PROMPT_ID: &str = "stop-prompt";
 pub fn view(app: &App) -> Element<'_, Message> {
     let task_name = app
         .active_entry
@@ -14,6 +15,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let panel = iced::widget::column![
         text(format!("Stopping: {task_name}")),
         text_editor(&app.stop_prompt_note)
+            .id(STOP_PROMPT_ID)
             .on_action(Message::StopPromptNoteChange)
             .height(Length::Fixed(120.0)),
         row![

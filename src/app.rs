@@ -3,7 +3,8 @@ use crate::data::store::{self, AppData};
 use crate::data::task::{Task as AppTask, TaskStatus};
 pub use crate::message::{Message, Screen};
 use crate::ui::quick_add::QUICK_ADD_ID;
-use iced::widget::{column, container, stack, text_editor};
+use crate::ui::stop_prompt::STOP_PROMPT_ID;
+use iced::widget::{Id, column, container, stack, text_editor};
 use iced::{Element, Length, Task};
 use uuid::Uuid;
 // --- The Model ---
@@ -210,23 +211,26 @@ impl App {
 
             // Stop prompt modal
             Message::OpenStopPrompt => {
-                // Defaults to next status unless explicitly told otherwise - on error reading the status, it defaults to Todo
-                let next_status = self
-                    .active_entry
-                    .as_ref()
-                    .and_then(|e| self.tasks.iter().find(|t| t.id == e.task_id))
-                    .map(|t| t.status.next())
-                    .unwrap_or(TaskStatus::Todo);
+                if self.active_entry.is_some() {
+                    // Defaults to next status unless explicitly told otherwise - on error reading the status, it defaults to Todo
+                    let next_status = self
+                        .active_entry
+                        .as_ref()
+                        .and_then(|e| self.tasks.iter().find(|t| t.id == e.task_id))
+                        .map(|t| t.status.next())
+                        .unwrap_or(TaskStatus::Todo);
 
-                self.stop_prompt_open = true;
-                let existing = self
-                    .active_entry
-                    .as_ref()
-                    .and_then(|e| e.notes.clone())
-                    .unwrap_or_default();
-                self.stop_prompt_note = text_editor::Content::with_text(&*existing);
-                self.stop_prompt_status = next_status;
-                self.pause_active_timer();
+                    self.stop_prompt_open = true;
+                    let existing = self
+                        .active_entry
+                        .as_ref()
+                        .and_then(|e| e.notes.clone())
+                        .unwrap_or_default();
+                    self.stop_prompt_note = text_editor::Content::with_text(&*existing);
+                    self.stop_prompt_status = next_status;
+                    self.pause_active_timer();
+                    return iced::widget::operation::focus(Id::new(STOP_PROMPT_ID));
+                }
             }
             Message::StopPromptNoteChange(action) => {
                 self.stop_prompt_note.perform(action);
@@ -379,14 +383,16 @@ impl App {
             }
 
             Message::OpenNoteModal => {
-                let existing = self
-                    .active_entry
-                    .as_ref()
-                    .and_then(|e| e.notes.clone())
-                    .unwrap_or_default();
-                self.note_modal_content = text_editor::Content::with_text(&existing);
+                if self.active_entry.is_some() {
+                    let existing = self
+                        .active_entry
+                        .as_ref()
+                        .and_then(|e| e.notes.clone())
+                        .unwrap_or_default();
+                    self.note_modal_content = text_editor::Content::with_text(&existing);
 
-                self.note_modal_open = true;
+                    self.note_modal_open = true;
+                }
             }
             Message::NoteModalChanged(action) => {
                 self.note_modal_content.perform(action);
@@ -444,8 +450,7 @@ impl App {
                 self.quick_add_selected = self.quick_add_selected.saturating_add(1)
             }
             Message::QuickAddConfirm => {
-                if !self.quick_add_open {
-                } else {
+                if self.quick_add_open {
                     let input = self.quick_add_input.trim().to_string();
                     let filtered: Vec<_> = self
                         .tasks
@@ -469,6 +474,32 @@ impl App {
                     self.quick_add_selected = 0;
 
                     return Task::done(Message::StartTimer(task_id));
+                }
+            }
+            Message::TogglePauseTimer => {
+                if let Some(entry) = &self.active_entry {
+                    if entry.is_paused() {
+                        return Task::done(Message::ResumeTimer);
+                    } else {
+                        return Task::done(Message::PauseTimer);
+                    }
+                }
+            }
+            Message::ToggleReview => {
+                return Task::done(match self.screen {
+                    Screen::Review => Message::CloseReview,
+                    Screen::Tracker => Message::OpenReview,
+                });
+            }
+            Message::CloseActiveModal => {
+                if self.stop_prompt_open {
+                    return Task::done(Message::CancelStop);
+                } else if self.note_modal_open {
+                    return Task::done(Message::CancelNoteModal);
+                } else if self.quick_add_open {
+                    return Task::done(Message::CloseQuickAdd);
+                } else if self.screen == Screen::Review {
+                    return Task::done(Message::CloseReview);
                 }
             }
         }
@@ -524,7 +555,8 @@ impl App {
                 iced::Subscription::none()
             }
         };
-        let keys = iced::event::listen_with(|event, _status, _window| {
+        let keys = iced::event::listen_with(|event, status, _window| {
+            use iced::event::Status;
             use iced::keyboard::{self, key::Named};
             if let iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event
             {
@@ -536,7 +568,17 @@ impl App {
                     }
                     keyboard::Key::Named(Named::ArrowUp) => Some(Message::QuickAddMoveUp),
                     keyboard::Key::Named(Named::ArrowDown) => Some(Message::QuickAddMoveDown),
-                    keyboard::Key::Named(Named::Escape) => Some(Message::CloseQuickAdd),
+                    keyboard::Key::Named(Named::Escape) => Some(Message::CloseActiveModal),
+                    keyboard::Key::Character(ref c) if status == Status::Ignored => {
+                        match c.as_str() {
+                            "q" | "Q" => Some(Message::OpenQuickAdd),
+                            "n" | "N" => Some(Message::OpenNoteModal),
+                            "p" | "P" => Some(Message::TogglePauseTimer),
+                            "s" | "S" => Some(Message::OpenStopPrompt),
+                            "r" | "R" => Some(Message::ToggleReview),
+                            _ => None,
+                        }
+                    }
                     _ => None,
                 }
             } else {

@@ -59,6 +59,9 @@ pub enum Message {
 
     // Keyboard shortcuts
     SubmitActiveEditor,
+    TogglePauseTimer,
+    ToggleReview,
+    CloseActiveModal,
 
     // Quick adds
     OpenQuickAdd,

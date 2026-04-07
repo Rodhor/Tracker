@@ -4,9 +4,6 @@ use iced::widget::{button, column, container, row, scrollable, text, text_input}
 use iced::{Element, Length};
 
 pub const QUICK_ADD_ID: &str = "quick_add_input";
-fn input_id() -> iced::widget::Id {
-    iced::widget::Id::new(QUICK_ADD_ID)
-}
 
 pub fn view(app: &App) -> Element<'_, Message> {
     let input_text = app.quick_add_input.as_str();
@@ -57,7 +54,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let panel = column![
         text("Start a task"),
         text_input("Filter or create new...", &app.quick_add_input)
-            .id(input_id())
+            .id(QUICK_ADD_ID)
             .on_input(Message::QuickAddInputChanged)
             .on_submit(Message::QuickAddConfirm),
         list,
