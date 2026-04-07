@@ -1,7 +1,7 @@
 use crate::app::{App, Message};
 use crate::data::entry::TimeEntry;
 use chrono::{DateTime, Local, Utc};
-use iced::widget::{button, column, container, row, scrollable, text, text_editor};
+use iced::widget::{button, column, container, row, scrollable, text, text_editor, text_input};
 use iced::{Element, Length};
 
 pub enum ReviewRow {
@@ -86,6 +86,24 @@ pub fn view(app: &App) -> Element<'_, Message> {
                     items.push(confirm_row.into());
                     continue; // skip the rest of the current loop
                 }
+                if app.editing_time_id == Some(entry.id) {
+                    let time_edit = row![
+                        text(task_name).width(Length::FillPortion(2)),
+                        text_input("HH:MM", &app.edit_time_start)
+                            .on_input(Message::EditTimeStartChanged)
+                            .width(Length::Fixed(60.0)),
+                        text(" --> "),
+                        text_input("HH:MM", &app.edit_time_end)
+                            .on_input(Message::EditTimeEndChanged)
+                            .width(Length::Fixed(60.0)),
+                        button(text("Save")).on_press(Message::SaveEditTime),
+                        button(text("Cancel")).on_press(Message::CancelEditTime),
+                    ]
+                    .padding(8)
+                    .spacing(8);
+                    items.push(time_edit.into());
+                    continue; // skip the rest of the current loop
+                }
 
                 let note_widget: Element<Message> = if app.editing_note_id == Some(entry.id) {
                     row![
@@ -100,9 +118,23 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 } else {
                     // Regular row - note widget and delete button
                     let note_text = entry.notes.clone().unwrap_or_else(|| "-".to_string());
+                    let copy_btn = entry.notes.as_ref().map(|note| {
+                        button(text("Copy")).on_press(Message::CopyEntryNote(note.clone()))
+                    });
                     row![
                         text(note_text).width(Length::Fill),
                         button(text("Edit")).on_press(Message::OpenEditNote(entry.id)),
+                        if let Some(btn) = copy_btn {
+                            btn
+                        } else {
+                            button(text("Copy"))
+                        },
+                        button(text("Edit time")).on_press_maybe(
+                            entry
+                                .ended_at
+                                .as_ref()
+                                .map(|_| Message::OpenEditTime(entry.id))
+                        ),
                         button(text("Delete")).on_press_maybe(
                             entry
                                 .ended_at
@@ -166,7 +198,6 @@ pub fn view(app: &App) -> Element<'_, Message> {
     .into()
 }
 
-// Parses an RFC3339 timestamp and formats it as HH:MM in UTC
 pub fn format_hhmm(rfc3339: &str) -> String {
     DateTime::parse_from_rfc3339(rfc3339)
         .map(|dt| dt.with_timezone(&Local).format("%H:%M").to_string())

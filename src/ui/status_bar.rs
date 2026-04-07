@@ -36,8 +36,15 @@ fn today_total_minutes(app: &App) -> i64 {
         .as_ref()
         .filter(|e| e.started_at.starts_with(&today))
         .and_then(|e| {
+            let effective_now = if let Some(p) = &e.paused_at {
+                DateTime::parse_from_rfc3339(p).ok()?.with_timezone(&Utc)
+            } else {
+                Utc::now()
+            };
             DateTime::parse_from_rfc3339(&e.started_at).ok().map(|dt| {
-                let gross = (Utc::now() - dt.with_timezone(&Utc)).num_minutes().max(0);
+                let gross = (effective_now - dt.with_timezone(&Utc))
+                    .num_minutes()
+                    .max(0);
                 (gross - e.total_paused).max(0)
             })
         })

@@ -45,6 +45,11 @@ pub struct App {
     pub(crate) quick_add_input: String,
     pub(crate) quick_add_selected: usize,
 
+    // Time Editing (Review screen)
+    pub(crate) editing_time_id: Option<Uuid>,
+    pub(crate) edit_time_start: String,
+    pub(crate) edit_time_end: String,
+
     // Screens
     // which top-level screen is shown
     pub(crate) screen: Screen,
@@ -94,6 +99,11 @@ impl App {
             quick_add_open: false,
             quick_add_input: String::new(),
             quick_add_selected: 0,
+
+            // Time Editing
+            editing_time_id: None,
+            edit_time_start: String::new(),
+            edit_time_end: String::new(),
 
             // --- Review screen ---
             review_date: chrono::Utc::now().date_naive(),
@@ -383,6 +393,9 @@ impl App {
             }
 
             Message::OpenNoteModal => {
+                self.editing_time_id = None;
+                self.edit_time_start = String::new();
+                self.edit_time_end = String::new();
                 if self.active_entry.is_some() {
                     let existing = self
                         .active_entry
@@ -423,6 +436,8 @@ impl App {
                     return Task::done(Message::SaveEditNote);
                 } else if self.editing_task_id.is_some() {
                     return Task::done(Message::SaveEditTask);
+                } else if self.editing_time_id.is_some() {
+                    return Task::done(Message::SaveEditTime);
                 }
             }
             Message::OpenQuickAdd => {
@@ -498,9 +513,107 @@ impl App {
                     return Task::done(Message::CancelNoteModal);
                 } else if self.quick_add_open {
                     return Task::done(Message::CloseQuickAdd);
+                } else if self.editing_note_id.is_some() {
+                    return Task::done(Message::CancelEditNote);
+                } else if self.editing_time_id.is_some() {
+                    return Task::done(Message::CancelEditTime);
                 } else if self.screen == Screen::Review {
                     return Task::done(Message::CloseReview);
                 }
+            }
+
+            Message::CopyEntryNote(text) => {
+                return iced::clipboard::write(text);
+            }
+            Message::OpenEditTime(entry_id) => {
+                self.editing_note_id = None;
+                self.editing_note_content = text_editor::Content::new();
+
+                if let Some(entry) = self.entries.iter().find(|e| e.id == entry_id) {
+                    use chrono::{DateTime, Local};
+                    let start = DateTime::parse_from_rfc3339(&entry.started_at)
+                        .map(|dt| dt.with_timezone(&Local).format("%H:%M").to_string())
+                        .unwrap_or_default();
+                    let end = entry
+                        .ended_at
+                        .as_deref()
+                        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&Local).format("%H:%M").to_string())
+                        .unwrap_or_default();
+                    self.editing_time_id = Some(entry_id);
+                    self.edit_time_start = start;
+                    self.edit_time_end = end;
+                }
+            }
+            Message::EditTimeStartChanged(value) => {
+                self.edit_time_start = value;
+            }
+            Message::EditTimeEndChanged(value) => {
+                self.edit_time_end = value;
+            }
+            Message::SaveEditTime => {
+                use chrono::{DateTime, Local, NaiveTime, TimeZone, Utc};
+                // Retrieve ID
+                let Some(id) = self.editing_time_id else {
+                    return Task::none();
+                };
+                // Retrieve entry
+                let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) else {
+                    return Task::none();
+                };
+
+                // Parse Entry data, if malformed, exit early
+                let entry_date = DateTime::parse_from_rfc3339(&entry.started_at)
+                    .map(|dt| dt.with_timezone(&Local).date_naive());
+                let Ok(entry_date) = entry_date else {
+                    return Task::none();
+                };
+
+                // Parse newly entered times
+                let Ok(new_start_time) = NaiveTime::parse_from_str(&self.edit_time_start, "%H:%M")
+                else {
+                    return Task::none();
+                };
+                let Ok(new_end_time) = NaiveTime::parse_from_str(&self.edit_time_end, "%H:%M")
+                else {
+                    return Task::none();
+                };
+
+                // Convert local times to correct format
+                let Some(start_local) = Local
+                    .from_local_datetime(&entry_date.and_time(new_start_time))
+                    .single()
+                else {
+                    return Task::none();
+                };
+                let Some(end_local) = Local
+                    .from_local_datetime(&entry_date.and_time(new_end_time))
+                    .single()
+                else {
+                    return Task::none();
+                };
+
+                // If end is smaller than start, the time is invalid
+                if end_local <= start_local {
+                    return Task::none();
+                };
+
+                let gross_minutes = (end_local - start_local).num_minutes();
+                let net_minutes = (gross_minutes - entry.total_paused).max(0);
+
+                entry.started_at = start_local.with_timezone(&Utc).to_rfc3339();
+                entry.ended_at = Some(end_local.with_timezone(&Utc).to_rfc3339());
+                entry.minutes = Some(net_minutes);
+
+                self.editing_time_id = None;
+                self.edit_time_start = String::new();
+                self.edit_time_end = String::new();
+                self.save();
+            }
+            Message::CancelEditTime => {
+                self.editing_time_id = None;
+                self.edit_time_start = String::new();
+                self.edit_time_end = String::new();
             }
         }
 

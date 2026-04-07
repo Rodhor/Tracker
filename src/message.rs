@@ -70,6 +70,16 @@ pub enum Message {
     QuickAddMoveUp,
     QuickAddMoveDown,
     QuickAddConfirm,
+
+    // Time Editing
+    OpenEditTime(Uuid),
+    EditTimeStartChanged(String),
+    EditTimeEndChanged(String),
+    SaveEditTime,
+    CancelEditTime,
+
+    // Copy to clipboard
+    CopyEntryNote(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
