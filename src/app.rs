@@ -2,10 +2,10 @@ use crate::data::entry::TimeEntry;
 use crate::data::store::{self, AppData};
 use crate::data::task::{Task as AppTask, TaskStatus};
 pub use crate::message::{Message, Screen};
+use crate::ui::quick_add::QUICK_ADD_ID;
 use iced::widget::{column, container, stack, text_editor};
 use iced::{Element, Length, Task};
 use uuid::Uuid;
-
 // --- The Model ---
 
 pub struct App {
@@ -38,6 +38,11 @@ pub struct App {
     // Live notes
     pub(crate) note_modal_open: bool,
     pub(crate) note_modal_content: text_editor::Content,
+
+    // Quick add Task
+    pub(crate) quick_add_open: bool,
+    pub(crate) quick_add_input: String,
+    pub(crate) quick_add_selected: usize,
 
     // Screens
     // which top-level screen is shown
@@ -84,6 +89,11 @@ impl App {
             note_modal_open: false,
             note_modal_content: text_editor::Content::new(),
 
+            // Quick add Task
+            quick_add_open: false,
+            quick_add_input: String::new(),
+            quick_add_selected: 0,
+
             // --- Review screen ---
             review_date: chrono::Utc::now().date_naive(),
             editing_note_id: None,
@@ -120,6 +130,11 @@ impl App {
 
             // --- Timer messages ---
             Message::StartTimer(task_id) => {
+                // Reset quick add
+                self.quick_add_open = false;
+                self.quick_add_input.clear();
+                self.quick_add_selected = 0;
+
                 let already_tracking = self
                     .active_entry
                     .as_ref()
@@ -404,6 +419,58 @@ impl App {
                     return Task::done(Message::SaveEditTask);
                 }
             }
+            Message::OpenQuickAdd => {
+                self.quick_add_open = true;
+                self.quick_add_input.clear();
+                self.quick_add_selected = 0;
+                use iced::widget::Id;
+                return iced::widget::operation::focus(Id::new(QUICK_ADD_ID));
+            }
+            Message::CloseQuickAdd => {
+                self.quick_add_open = false;
+                self.quick_add_input.clear();
+                self.quick_add_selected = 0;
+            }
+            Message::QuickAddInputChanged(value) => {
+                self.quick_add_input = value;
+                self.quick_add_selected = 0;
+            }
+            Message::QuickAddMoveUp => {
+                if self.quick_add_selected > 0 {
+                    self.quick_add_selected -= 1
+                }
+            }
+            Message::QuickAddMoveDown => {
+                self.quick_add_selected = self.quick_add_selected.saturating_add(1)
+            }
+            Message::QuickAddConfirm => {
+                if !self.quick_add_open {
+                } else {
+                    let input = self.quick_add_input.trim().to_string();
+                    let filtered: Vec<_> = self
+                        .tasks
+                        .iter()
+                        .filter(|t| t.name.to_lowercase().contains(&input.to_lowercase()))
+                        .collect();
+
+                    let task_id = if self.quick_add_selected < filtered.len() {
+                        filtered[self.quick_add_selected].id
+                    } else if !input.is_empty() {
+                        let task = crate::data::task::Task::new(input.clone());
+                        let id = task.id;
+                        self.tasks.push(task);
+                        id
+                    } else {
+                        return Task::none();
+                    };
+
+                    self.quick_add_open = false;
+                    self.quick_add_input.clear();
+                    self.quick_add_selected = 0;
+
+                    return Task::done(Message::StartTimer(task_id));
+                }
+            }
         }
 
         Task::none()
@@ -428,9 +495,14 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill);
 
-        match (self.stop_prompt_open, self.note_modal_open) {
-            (true, false) => stack![base, ui::stop_prompt::view(self)].into(),
-            (false, true) => stack![base, ui::note_modal::view(self)].into(),
+        match (
+            self.stop_prompt_open,
+            self.note_modal_open,
+            self.quick_add_open,
+        ) {
+            (true, false, false) => stack![base, ui::stop_prompt::view(self)].into(),
+            (false, true, false) => stack![base, ui::note_modal::view(self)].into(),
+            (false, false, true) => stack![base, ui::quick_add::view(self)].into(),
             _ => base.into(),
         }
     }
@@ -439,7 +511,6 @@ impl App {
     // this is used to listen to a stream of messages from the OS or other sources
     // for example, a timer tick
     pub fn subscription(&self) -> iced::Subscription<Message> {
-        use iced::keyboard;
         let tick = {
             let should_tick = self
                 .active_entry
@@ -453,28 +524,26 @@ impl App {
                 iced::Subscription::none()
             }
         };
-        let submit = if self.note_modal_open
-            || self.stop_prompt_open
-            || self.editing_note_id.is_some()
-            || self.editing_task_id.is_some()
-        {
-            iced::event::listen_with(|event, _status, _window| {
-                if let iced::Event::Keyboard(keyboard::Event::KeyPressed {
-                    key: keyboard::Key::Named(keyboard::key::Named::Enter),
-                    modifiers,
-                    ..
-                }) = event
-                {
-                    if modifiers.control() || modifiers.shift() {
-                        return Some(Message::SubmitActiveEditor);
+        let keys = iced::event::listen_with(|event, _status, _window| {
+            use iced::keyboard::{self, key::Named};
+            if let iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event
+            {
+                match key {
+                    keyboard::Key::Named(Named::Enter)
+                        if modifiers.control() || modifiers.shift() =>
+                    {
+                        Some(Message::SubmitActiveEditor)
                     }
+                    keyboard::Key::Named(Named::ArrowUp) => Some(Message::QuickAddMoveUp),
+                    keyboard::Key::Named(Named::ArrowDown) => Some(Message::QuickAddMoveDown),
+                    keyboard::Key::Named(Named::Escape) => Some(Message::CloseQuickAdd),
+                    _ => None,
                 }
+            } else {
                 None
-            })
-        } else {
-            iced::Subscription::none()
-        };
-        iced::Subscription::batch([tick, submit])
+            }
+        });
+        iced::Subscription::batch([tick, keys])
     }
 
     // --- Helper functions ---

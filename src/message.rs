@@ -59,6 +59,14 @@ pub enum Message {
 
     // Keyboard shortcuts
     SubmitActiveEditor,
+
+    // Quick adds
+    OpenQuickAdd,
+    CloseQuickAdd,
+    QuickAddInputChanged(String),
+    QuickAddMoveUp,
+    QuickAddMoveDown,
+    QuickAddConfirm,
 }
 
 #[derive(Debug, Clone, PartialEq)]
