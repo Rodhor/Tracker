@@ -1,3 +1,4 @@
+pub mod note_modal;
 pub mod review;
 pub mod status_bar;
 pub mod stop_prompt;

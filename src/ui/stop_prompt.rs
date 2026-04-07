@@ -1,6 +1,6 @@
 use crate::app::{App, Message};
 use crate::data::task::TaskStatus;
-use iced::widget::{button, container, row, text, text_input};
+use iced::widget::{button, container, pick_list, row, text, text_editor};
 use iced::{Element, Length};
 
 pub fn view(app: &App) -> Element<'_, Message> {
@@ -11,21 +11,20 @@ pub fn view(app: &App) -> Element<'_, Message> {
         .map(|t| t.name.as_str())
         .unwrap_or("Unknown task");
 
-    let status_row = row![
-        button(text("To do")).on_press(Message::StopPromptStatusChanged(TaskStatus::Todo)),
-        button(text("In Progress"))
-            .on_press(Message::StopPromptStatusChanged(TaskStatus::InProgress)),
-        button(text("Done")).on_press(Message::StopPromptStatusChanged(TaskStatus::Done)),
-    ]
-    .spacing(7);
-
     let panel = iced::widget::column![
         text(format!("Stopping: {task_name}")),
-        text_input("what did you accomplish?", &app.stop_prompt_note)
-            .on_input(Message::StopPromptNoteChange)
-            .on_submit(Message::ConfirmStop),
-        status_row,
-        text(format!("Mark as: {}", app.stop_prompt_status.label())),
+        text_editor(&app.stop_prompt_note)
+            .on_action(Message::StopPromptNoteChange)
+            .height(Length::Fixed(120.0)),
+        row![
+            text("Status"),
+            pick_list(
+                &[TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done][..],
+                Some(app.stop_prompt_status.clone()),
+                Message::StopPromptStatusChanged,
+            )
+        ]
+        .spacing(8),
         row![
             button(text("Stop and save")).on_press(Message::ConfirmStop),
             button(text("Cancel")).on_press(Message::CancelStop),

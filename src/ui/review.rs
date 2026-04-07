@@ -1,7 +1,7 @@
 use crate::app::{App, Message};
 use crate::data::entry::TimeEntry;
 use chrono::{DateTime, Local, Utc};
-use iced::widget::{button, column, container, row, scrollable, text, text_input};
+use iced::widget::{button, column, container, row, scrollable, text, text_editor};
 use iced::{Element, Length};
 
 pub enum ReviewRow {
@@ -89,10 +89,9 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
                 let note_widget: Element<Message> = if app.editing_note_id == Some(entry.id) {
                     row![
-                        text_input("Add a note...", &app.editing_note_text)
-                            .on_input(Message::EditNoteChanged)
-                            .on_submit(Message::SaveEditNote)
-                            .width(Length::Fill),
+                        text_editor(&app.editing_note_content)
+                            .on_action(Message::EditNoteChanged)
+                            .height(Length::Fixed(80.0)),
                         button(text("Save")).on_press(Message::SaveEditNote),
                         button(text("Cancel")).on_press(Message::CancelEditNote),
                     ]

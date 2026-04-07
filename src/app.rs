@@ -2,7 +2,7 @@ use crate::data::entry::TimeEntry;
 use crate::data::store::{self, AppData};
 use crate::data::task::{Task as AppTask, TaskStatus};
 pub use crate::message::{Message, Screen};
-use iced::widget::{column, container, stack};
+use iced::widget::{column, container, stack, text_editor};
 use iced::{Element, Length, Task};
 use uuid::Uuid;
 
@@ -19,21 +19,25 @@ pub struct App {
     pub(crate) editing_task_id: Option<Uuid>,
     pub(crate) edit_urgent: bool,
     pub(crate) edit_important: bool,
-    pub(crate) edit_description: String,
+    pub(crate) edit_description_content: text_editor::Content,
 
     // Stop prompt modal state
     pub(crate) stop_prompt_open: bool,
-    pub(crate) stop_prompt_note: String,
+    pub(crate) stop_prompt_note: text_editor::Content,
     pub(crate) stop_prompt_status: TaskStatus,
 
     // Review view state
     pub(crate) review_date: chrono::NaiveDate,
     pub(crate) editing_note_id: Option<Uuid>,
-    pub(crate) editing_note_text: String,
+    pub(crate) editing_note_content: text_editor::Content,
 
     // Delete confirmation
     pub(crate) deleting_entry_id: Option<Uuid>,
     pub(crate) deleting_task_id: Option<Uuid>,
+
+    // Live notes
+    pub(crate) note_modal_open: bool,
+    pub(crate) note_modal_content: text_editor::Content,
 
     // Screens
     // which top-level screen is shown
@@ -65,21 +69,25 @@ impl App {
             editing_task_id: None,
             edit_urgent: false,
             edit_important: false,
-            edit_description: String::new(),
+            edit_description_content: text_editor::Content::new(),
 
             // Stop prompt modal state
             stop_prompt_open: false,
-            stop_prompt_note: String::new(),
+            stop_prompt_note: text_editor::Content::new(),
             stop_prompt_status: TaskStatus::Todo, // Overwritten when the prompt opens
 
             // Deletion
             deleting_entry_id: None,
             deleting_task_id: None,
 
+            // Live notes
+            note_modal_open: false,
+            note_modal_content: text_editor::Content::new(),
+
             // --- Review screen ---
             review_date: chrono::Utc::now().date_naive(),
             editing_note_id: None,
-            editing_note_text: String::new(),
+            editing_note_content: text_editor::Content::new(),
         };
 
         // Task::none() is returned because there are no async tasks to kick off
@@ -120,7 +128,7 @@ impl App {
                 if !already_tracking {
                     if self.active_entry.is_some() {
                         self.stop_prompt_open = false;
-                        self.stop_prompt_note.clear();
+                        self.stop_prompt_note = text_editor::Content::new();
                         self.stop_active_timer(None);
                     }
                     let entry = TimeEntry::new(task_id);
@@ -142,7 +150,9 @@ impl App {
                     self.edit_urgent = task.urgent;
                     self.edit_important = task.important;
                     // Use unwrap_or_default() to avoid None and instead default to empty
-                    self.edit_description = task.description.clone().unwrap_or_default();
+                    self.edit_description_content = text_editor::Content::with_text(
+                        &task.description.clone().unwrap_or_default(),
+                    );
                 }
             }
 
@@ -150,7 +160,7 @@ impl App {
                 self.editing_task_id = None;
                 self.edit_urgent = false;
                 self.edit_important = false;
-                self.edit_description.clear();
+                self.edit_description_content = text_editor::Content::new();
             }
 
             Message::EditUrgentChanged(value) => {
@@ -161,8 +171,8 @@ impl App {
                 self.edit_important = value;
             }
 
-            Message::EditDescriptionChanged(value) => {
-                self.edit_description = value;
+            Message::EditDescriptionChanged(action) => {
+                self.edit_description_content.perform(action);
             }
 
             Message::SaveEditTask => {
@@ -170,7 +180,8 @@ impl App {
                     if let Some(task) = self.tasks.iter_mut().find(|t| t.id == id) {
                         task.urgent = self.edit_urgent;
                         task.important = self.edit_important;
-                        let desc = self.edit_description.trim().to_string();
+                        let desc = self.edit_description_content.text();
+                        let desc = desc.trim().to_string();
                         task.description = if desc.is_empty() { None } else { Some(desc) };
                         task.status = task.status.reset_status();
                     }
@@ -178,7 +189,7 @@ impl App {
                 self.editing_task_id = None;
                 self.edit_urgent = false;
                 self.edit_important = false;
-                self.edit_description.clear();
+                self.edit_description_content = text_editor::Content::new();
                 self.save();
             }
 
@@ -193,19 +204,25 @@ impl App {
                     .unwrap_or(TaskStatus::Todo);
 
                 self.stop_prompt_open = true;
-                self.stop_prompt_note.clear();
+                let existing = self
+                    .active_entry
+                    .as_ref()
+                    .and_then(|e| e.notes.clone())
+                    .unwrap_or_default();
+                self.stop_prompt_note = text_editor::Content::with_text(&*existing);
                 self.stop_prompt_status = next_status;
                 self.pause_active_timer();
             }
-            Message::StopPromptNoteChange(value) => {
-                self.stop_prompt_note = value;
+            Message::StopPromptNoteChange(action) => {
+                self.stop_prompt_note.perform(action);
             }
             Message::StopPromptStatusChanged(status) => {
                 self.stop_prompt_status = status;
             }
             Message::ConfirmStop => {
                 let note = {
-                    let s = self.stop_prompt_note.trim().to_string();
+                    let s = self.stop_prompt_note.text();
+                    let s = s.trim().to_string();
                     if s.is_empty() { None } else { Some(s) }
                 };
                 let new_status = self.stop_prompt_status.clone();
@@ -222,14 +239,14 @@ impl App {
                 }
 
                 self.stop_prompt_open = false;
-                self.stop_prompt_note.clear();
+                self.stop_prompt_note = text_editor::Content::new();
                 self.stop_prompt_status = TaskStatus::Todo;
                 self.save();
             }
 
             Message::CancelStop => {
                 self.stop_prompt_open = false;
-                self.stop_prompt_note.clear();
+                self.stop_prompt_note = text_editor::Content::new();
                 self.resume_active_timer();
             }
 
@@ -238,18 +255,18 @@ impl App {
                 self.screen = Screen::Review;
                 self.review_date = chrono::Utc::now().date_naive();
                 self.editing_note_id = None;
-                self.editing_note_text.clear();
+                self.editing_note_content = text_editor::Content::new();
             }
             Message::CloseReview => {
                 self.screen = Screen::Tracker;
                 self.editing_note_id = None;
-                self.editing_note_text.clear();
+                self.editing_note_content = text_editor::Content::new();
             }
             Message::ReviewPrevDay => {
                 self.review_date = self.review_date.pred_opt().unwrap_or(self.review_date);
                 // Clear currently navigated edits to avoid conflicts
                 self.editing_note_id = None;
-                self.editing_note_text.clear();
+                self.editing_note_content = text_editor::Content::new();
             }
             // This only moves up until the current day - it does not work for future days
             Message::ReviewNextDay => {
@@ -257,7 +274,7 @@ impl App {
                 if self.review_date < today {
                     self.review_date = self.review_date.succ_opt().unwrap_or(self.review_date);
                     self.editing_note_id = None;
-                    self.editing_note_text.clear();
+                    self.editing_note_content = text_editor::Content::new();
                 }
             }
 
@@ -270,33 +287,34 @@ impl App {
                     .and_then(|e| e.notes.clone())
                     .unwrap_or_default();
                 self.editing_note_id = Some(entry_id);
-                self.editing_note_text = current_note;
+                self.editing_note_content = text_editor::Content::with_text(&current_note);
             }
-            Message::EditNoteChanged(value) => {
-                self.editing_note_text = value;
+            Message::EditNoteChanged(action) => {
+                self.editing_note_content.perform(action);
             }
             Message::SaveEditNote => {
                 if let Some(id) = self.editing_note_id {
                     let note = {
-                        let s = self.editing_note_text.trim().to_string();
+                        let s = self.editing_note_content.text();
+                        let s = s.trim().to_string();
                         if s.is_empty() { None } else { Some(s) }
                     };
                     if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
                         entry.notes = note;
                     }
                     self.editing_note_id = None;
-                    self.editing_note_text.clear();
+                    self.editing_note_content = text_editor::Content::new();
                     self.save();
                 }
             }
             Message::CancelEditNote => {
                 self.editing_note_id = None;
-                self.editing_note_text.clear();
+                self.editing_note_content = text_editor::Content::new();
             }
 
             Message::RequestDeleteEntry(entry_id) => {
                 self.editing_note_id = None;
-                self.editing_note_text.clear();
+                self.editing_note_content = text_editor::Content::new();
                 self.deleting_entry_id = Some(entry_id);
             }
             Message::ConfirmDeleteEntry => {
@@ -311,7 +329,7 @@ impl App {
             }
             Message::RequestDeleteTask(task_id) => {
                 self.editing_task_id = None;
-                self.edit_description.clear();
+                self.edit_description_content = text_editor::Content::new();
                 self.deleting_task_id = Some(task_id);
             }
             Message::ConfirmDeleteTask => {
@@ -320,7 +338,7 @@ impl App {
                     if self.active_entry.as_ref().is_some_and(|e| e.task_id == id) {
                         self.active_entry = None;
                         self.stop_prompt_open = false;
-                        self.stop_prompt_note.clear();
+                        self.stop_prompt_note = text_editor::Content::new();
                     }
 
                     // Cascade: remove all entries that belonged to the deleted task
@@ -337,10 +355,54 @@ impl App {
                         self.editing_task_id = Some(task.id);
                         self.edit_urgent = task.urgent;
                         self.edit_important = task.important;
-                        self.edit_description = task.description.clone().unwrap_or_default();
+                        self.edit_description_content = text_editor::Content::with_text(
+                            &task.description.clone().unwrap_or_default(),
+                        );
                     }
                 }
                 self.deleting_task_id = None;
+            }
+
+            Message::OpenNoteModal => {
+                let existing = self
+                    .active_entry
+                    .as_ref()
+                    .and_then(|e| e.notes.clone())
+                    .unwrap_or_default();
+                self.note_modal_content = text_editor::Content::with_text(&existing);
+
+                self.note_modal_open = true;
+            }
+            Message::NoteModalChanged(action) => {
+                self.note_modal_content.perform(action);
+            }
+            Message::SaveNoteModal => {
+                if let Some(entry) = self.active_entry.as_mut() {
+                    let note = self.note_modal_content.text();
+                    let note = note.trim().to_string();
+                    entry.notes = if note.is_empty() { None } else { Some(note) };
+                    if let Some(existing) = self.entries.iter_mut().find(|e| e.id == entry.id) {
+                        *existing = entry.clone();
+                    }
+                }
+                self.note_modal_open = false;
+                self.note_modal_content = text_editor::Content::new();
+                self.save();
+            }
+            Message::CancelNoteModal => {
+                self.note_modal_open = false;
+                self.note_modal_content = text_editor::Content::new();
+            }
+            Message::SubmitActiveEditor => {
+                if self.note_modal_open {
+                    return Task::done(Message::SaveNoteModal);
+                } else if self.stop_prompt_open {
+                    return Task::done(Message::ConfirmStop);
+                } else if self.editing_note_id.is_some() {
+                    return Task::done(Message::SaveEditNote);
+                } else if self.editing_task_id.is_some() {
+                    return Task::done(Message::SaveEditTask);
+                }
             }
         }
 
@@ -366,36 +428,59 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill);
 
-        if self.stop_prompt_open {
-            stack![base, ui::stop_prompt::view(self)].into()
-        } else {
-            base.into()
+        match (self.stop_prompt_open, self.note_modal_open) {
+            (true, false) => stack![base, ui::stop_prompt::view(self)].into(),
+            (false, true) => stack![base, ui::note_modal::view(self)].into(),
+            _ => base.into(),
         }
     }
 
-    // timer_bar is the UI Element that displays the active timer, if any
-
-    // Subscription defines the iced Subscription for the app (currently none)
+    // Subscription defines the iced Subscription for the app
     // this is used to listen to a stream of messages from the OS or other sources
     // for example, a timer tick
     pub fn subscription(&self) -> iced::Subscription<Message> {
-        let should_tick = self
-            .active_entry
-            .as_ref()
-            .map(|e| !e.is_paused())
-            .unwrap_or(false);
+        use iced::keyboard;
+        let tick = {
+            let should_tick = self
+                .active_entry
+                .as_ref()
+                .map(|e| !e.is_paused())
+                .unwrap_or(false);
 
-        if should_tick {
-            iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick)
+            if should_tick {
+                iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick)
+            } else {
+                iced::Subscription::none()
+            }
+        };
+        let submit = if self.note_modal_open
+            || self.stop_prompt_open
+            || self.editing_note_id.is_some()
+            || self.editing_task_id.is_some()
+        {
+            iced::event::listen_with(|event, _status, _window| {
+                if let iced::Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(keyboard::key::Named::Enter),
+                    modifiers,
+                    ..
+                }) = event
+                {
+                    if modifiers.control() || modifiers.shift() {
+                        return Some(Message::SubmitActiveEditor);
+                    }
+                }
+                None
+            })
         } else {
             iced::Subscription::none()
-        }
+        };
+        iced::Subscription::batch([tick, submit])
     }
 
     // --- Helper functions ---
 
     fn save(&self) {
-        let data = store::AppData {
+        let data = AppData {
             tasks: self.tasks.clone(),
             entries: self.entries.clone(),
         };

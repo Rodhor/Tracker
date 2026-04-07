@@ -19,7 +19,7 @@ pub enum Message {
     CloseEditTask,
     EditUrgentChanged(bool),
     EditImportantChanged(bool),
-    EditDescriptionChanged(String),
+    EditDescriptionChanged(iced::widget::text_editor::Action),
     SaveEditTask,
 
     // Deletion
@@ -29,7 +29,7 @@ pub enum Message {
 
     // Stop prompt modal
     OpenStopPrompt,
-    StopPromptNoteChange(String),
+    StopPromptNoteChange(iced::widget::text_editor::Action),
     StopPromptStatusChanged(TaskStatus),
     ConfirmStop,
     CancelStop,
@@ -42,7 +42,7 @@ pub enum Message {
 
     // Inline note editing
     OpenEditNote(Uuid),
-    EditNoteChanged(String),
+    EditNoteChanged(iced::widget::text_editor::Action),
     SaveEditNote,
     CancelEditNote,
 
@@ -50,6 +50,15 @@ pub enum Message {
     RequestDeleteEntry(Uuid),
     ConfirmDeleteEntry,
     CancelDeleteEntry,
+
+    // Live notes
+    OpenNoteModal,
+    NoteModalChanged(iced::widget::text_editor::Action),
+    SaveNoteModal,
+    CancelNoteModal,
+
+    // Keyboard shortcuts
+    SubmitActiveEditor,
 }
 
 #[derive(Debug, Clone, PartialEq)]

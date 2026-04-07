@@ -1,6 +1,6 @@
 use crate::app::{App, Message};
 use crate::data::task::Task as AppTask;
-use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input};
+use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_editor};
 use iced::{Element, Length};
 
 pub fn view(app: &App) -> Element<'_, Message> {
@@ -88,9 +88,10 @@ fn edit_row<'a>(app: &'a App, task: &'a AppTask) -> Element<'a, Message> {
                 .on_toggle(Message::EditImportantChanged),
         ]
         .spacing(16),
-        text_input("Description (optional)", &app.edit_description)
-            .on_input(Message::EditDescriptionChanged)
-            .on_submit(Message::SaveEditTask)
+        text_editor(&app.edit_description_content)
+            .on_action(Message::EditDescriptionChanged)
+            .height(Length::Fixed(100.0))
+            .placeholder("Description (optional)")
     ]
     .padding(8)
     .spacing(4)

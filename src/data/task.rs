@@ -74,3 +74,8 @@ impl Task {
         self.urgent || self.important
     }
 }
+impl std::fmt::Display for TaskStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label())
+    }
+}
