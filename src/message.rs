@@ -17,6 +17,7 @@ pub enum Message {
     // Edit task panel
     OpenEditTask(Uuid),
     CloseEditTask,
+    EditTaskName(String),
     EditUrgentChanged(bool),
     EditImportantChanged(bool),
     EditDescriptionChanged(iced::widget::text_editor::Action),

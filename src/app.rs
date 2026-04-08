@@ -23,6 +23,7 @@ pub struct App {
     pub(crate) edit_urgent: bool,
     pub(crate) edit_important: bool,
     pub(crate) edit_description_content: text_editor::Content,
+    pub(crate) edit_task_name: String,
 
     // Stop prompt modal state
     pub(crate) stop_prompt_open: bool,
@@ -83,6 +84,7 @@ impl App {
             edit_urgent: false,
             edit_important: false,
             edit_description_content: text_editor::Content::new(),
+            edit_task_name: String::new(),
 
             // Stop prompt modal state
             stop_prompt_open: false,
@@ -177,6 +179,7 @@ impl App {
                 // copy task into temporary fields for editing
                 if let Some(task) = self.tasks.iter().find(|t| t.id == task_id) {
                     self.editing_task_id = Some(task.id);
+                    self.edit_task_name = task.name.clone();
                     self.edit_urgent = task.urgent;
                     self.edit_important = task.important;
                     // Use unwrap_or_default() to avoid None and instead default to empty
@@ -188,11 +191,15 @@ impl App {
 
             Message::CloseEditTask => {
                 self.editing_task_id = None;
+                self.edit_task_name.clear();
                 self.edit_urgent = false;
                 self.edit_important = false;
                 self.edit_description_content = text_editor::Content::new();
             }
 
+            Message::EditTaskName(value) => {
+                self.edit_task_name = value;
+            }
             Message::EditUrgentChanged(value) => {
                 self.edit_urgent = value;
             }
@@ -208,6 +215,10 @@ impl App {
             Message::SaveEditTask => {
                 if let Some(id) = self.editing_task_id {
                     if let Some(task) = self.tasks.iter_mut().find(|t| t.id == id) {
+                        let name = self.edit_task_name.trim().to_string();
+                        if !name.is_empty() {
+                            task.name = name;
+                        }
                         task.urgent = self.edit_urgent;
                         task.important = self.edit_important;
                         let desc = self.edit_description_content.text();
@@ -216,6 +227,7 @@ impl App {
                     }
                 }
                 self.editing_task_id = None;
+                self.edit_task_name.clear();
                 self.edit_urgent = false;
                 self.edit_important = false;
                 self.edit_description_content = text_editor::Content::new();
@@ -390,6 +402,7 @@ impl App {
                 if let Some(id) = self.deleting_task_id {
                     if let Some(task) = self.tasks.iter().find(|t| t.id == id) {
                         self.editing_task_id = Some(task.id);
+                        self.edit_task_name = task.name.clone();
                         self.edit_urgent = task.urgent;
                         self.edit_important = task.important;
                         self.edit_description_content = text_editor::Content::with_text(
