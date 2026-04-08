@@ -2,6 +2,7 @@ use crate::app::{App, Message};
 use crate::data::task::Task;
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
 use iced::{Element, Length};
+use iced_fonts::bootstrap;
 
 pub const QUICK_ADD_ID: &str = "quick_add_input";
 
@@ -23,36 +24,38 @@ pub fn view(app: &App) -> Element<'_, Message> {
         .iter()
         .enumerate()
         .map(|(i, task)| {
-            let label = if i == selected {
-                format!("Start {}", task.name)
+            let btn = if i == selected {
+                let content: Element<Message> = row![bootstrap::play_fill(), text(task.name.as_str())]
+                    .spacing(8)
+                    .into();
+                button(content)
+                    .width(Length::Fill)
+                    .on_press(Message::StartTimer(task.id))
+                    .style(button::primary)
             } else {
-                format!("   {}", task.name)
+                button(text(task.name.as_str()))
+                    .width(Length::Fill)
+                    .on_press(Message::StartTimer(task.id))
             };
-            let btn = button(text(label))
-                .width(Length::Fill)
-                .on_press(Message::StartTimer(task.id));
-            if i == selected {
-                btn.style(button::primary).into()
-            } else {
-                btn.into()
-            }
+            btn.into()
         })
         .collect();
 
     if !input_text.is_empty() {
-        let create_label = if selected == filtered.len() {
-            format!("Create \"{}\"", input_text)
+        let create_btn = if selected == filtered.len() {
+            let content: Element<Message> = row![bootstrap::plus_circle(), text(format!("Create \"{}\"", input_text))]
+                .spacing(8)
+                .into();
+            button(content)
+                .width(Length::Fill)
+                .on_press(Message::QuickAddConfirm)
+                .style(button::primary)
         } else {
-            format!("   Create \"{}\"", input_text)
+            button(text(format!("Create \"{}\"", input_text)))
+                .width(Length::Fill)
+                .on_press(Message::QuickAddConfirm)
         };
-        let create_btn = button(text(create_label))
-            .width(Length::Fill)
-            .on_press(Message::QuickAddConfirm);
-        rows.push(if selected == filtered.len() {
-            create_btn.style(button::primary).into()
-        } else {
-            create_btn.into()
-        });
+        rows.push(create_btn.into());
     }
 
     let list = scrollable(column(rows).spacing(2)).height(Length::Fixed(240.0));
@@ -64,7 +67,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
             .on_input(Message::QuickAddInputChanged)
             .on_submit(Message::QuickAddConfirm),
         list,
-        row![button(text("Cancel")).on_press(Message::CloseQuickAdd).style(button::text),].spacing(8),
+        row![button(bootstrap::x_circle()).on_press(Message::CloseQuickAdd).style(button::text),].spacing(8),
     ]
     .spacing(12)
     .padding(24)

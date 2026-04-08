@@ -1,6 +1,7 @@
 use crate::app::{App, Message};
 use iced::widget::{button, container, row, text, text_editor};
 use iced::{Element, Length};
+use iced_fonts::bootstrap;
 
 pub const NOTE_MODAL_ID: &str = "note_modal";
 
@@ -13,7 +14,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
             .height(Length::Fixed(160.0)),
         row![
             button(text("Save")).on_press(Message::SaveNoteModal).style(button::primary),
-            button(text("Cancel")).on_press(Message::CancelNoteModal).style(button::text),
+            button(bootstrap::x_circle()).on_press(Message::CancelNoteModal).style(button::text),
         ]
         .spacing(8),
     ]

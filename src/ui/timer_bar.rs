@@ -2,6 +2,7 @@ use crate::app::{App, Message};
 use chrono::{DateTime, Utc};
 use iced::widget::{button, container, row, text};
 use iced::{Element, Length};
+use iced_fonts::bootstrap;
 
 pub fn view(app: &App) -> Element<'_, Message> {
     match &app.active_entry {
@@ -19,16 +20,16 @@ pub fn view(app: &App) -> Element<'_, Message> {
             );
 
             let pause_resume_btn = if entry.is_paused() {
-                button(text("Resume")).on_press(Message::ResumeTimer)
+                button(bootstrap::play_fill()).on_press(Message::ResumeTimer)
             } else {
-                button(text("Pause")).on_press(Message::PauseTimer)
+                button(bootstrap::pause_fill()).on_press(Message::PauseTimer)
             };
 
             row![
                 text(format!("{task_name} - {elapsed}")).width(Length::Fill),
-                button(text("Note")).on_press(Message::OpenNoteModal),
+                button(bootstrap::journal_text()).on_press(Message::OpenNoteModal),
                 pause_resume_btn,
-                button(text("Stop")).on_press(Message::OpenStopPrompt).style(button::danger),
+                button(bootstrap::stop_fill()).on_press(Message::OpenStopPrompt).style(button::danger),
             ]
             .padding(12)
             .spacing(8)

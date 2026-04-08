@@ -2,6 +2,7 @@ use crate::app::{App, Message};
 use chrono::{DateTime, Utc};
 use iced::widget::{button, row, text, text_input};
 use iced::{Element, Length};
+use iced_fonts::bootstrap;
 
 pub fn view(app: &App) -> Element<'_, Message> {
     let total = today_total_minutes(app);
@@ -13,7 +14,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
             .on_input(Message::TaskNameChanged)
             .on_submit(Message::SubmitNewTask)
             .width(Length::Fill),
-        button(text("Review")).on_press(Message::OpenReview).style(button::text),
+        button(bootstrap::clock_history()).on_press(Message::OpenReview).style(button::text),
     ]
     .padding(8)
     .spacing(8)

@@ -6,6 +6,7 @@ use iced::widget::{
     button, checkbox, column, container, row, scrollable, text, text_editor, text_input,
 };
 use iced::{Element, Length};
+use iced_fonts::bootstrap;
 
 pub fn view(app: &App) -> Element<'_, Message> {
     if app.tasks.is_empty() {
@@ -68,12 +69,12 @@ fn task_row_or_edit<'a>(app: &'a App, task: &'a AppTask) -> Element<'a, Message>
 
 fn task_row(task: &AppTask, is_active: bool) -> Element<'_, Message> {
     let r = row![
-        button(text("▶"))
+        button(bootstrap::play_fill())
             .on_press(Message::StartTimer(task.id))
             .style(button::primary),
         text(&task.name).width(Length::Fill),
         button(text(task.status.label())).on_press(Message::CycleStatus(task.id)),
-        button(text("Edit")).on_press(Message::OpenEditTask(task.id))
+        button(bootstrap::pencil()).on_press(Message::OpenEditTask(task.id))
     ]
     .padding(8)
     .spacing(8);
@@ -94,13 +95,13 @@ fn edit_row<'a>(app: &'a App, task: &'a AppTask) -> Element<'a, Message> {
             text_input("Task name", &app.edit_task_name)
                 .on_input(Message::EditTaskName)
                 .on_submit(Message::SaveEditTask),
-            button(text("Save"))
+            button(bootstrap::floppy())
                 .on_press(Message::SaveEditTask)
                 .style(button::primary),
-            button(text("Cancel"))
+            button(bootstrap::x_circle())
                 .on_press(Message::CloseEditTask)
                 .style(button::text),
-            button(text("Delete"))
+            button(bootstrap::trash())
                 .on_press(Message::RequestDeleteTask(task.id))
                 .style(button::danger)
         ]
@@ -138,7 +139,7 @@ fn delete_task_confirm_row<'a>(app: &'a App, task: &'a AppTask) -> Element<'a, M
         button(text("Confirm delete"))
             .on_press(Message::ConfirmDeleteTask)
             .style(button::danger),
-        button(text("Cancel"))
+        button(bootstrap::x_circle())
             .on_press(Message::CancelDeleteTask)
             .style(button::text),
     ]

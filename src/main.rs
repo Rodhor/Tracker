@@ -4,6 +4,7 @@ mod message;
 mod timer;
 mod ui;
 use iced::window;
+use iced_fonts::BOOTSTRAP_FONT_BYTES;
 
 use app::App;
 
@@ -16,6 +17,7 @@ fn main() -> iced::Result {
         .title("Tasktracker")
         .subscription(App::subscription)
         .theme(|_: &App| app_theme())
+        .font(BOOTSTRAP_FONT_BYTES)
         .window(window::Settings {
             size: iced::Size::new(800.0, 550.0),
             min_size: Some(iced::Size::new(640.0, 420.0)),

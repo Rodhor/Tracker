@@ -2,6 +2,7 @@ use crate::app::{App, Message};
 use crate::data::task::TaskStatus;
 use iced::widget::{button, container, pick_list, row, text, text_editor};
 use iced::{Element, Length};
+use iced_fonts::bootstrap;
 
 pub const STOP_PROMPT_ID: &str = "stop-prompt";
 pub fn view(app: &App) -> Element<'_, Message> {
@@ -38,7 +39,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
             button(text("Stop and save"))
                 .on_press(Message::ConfirmStop)
                 .style(button::primary),
-            button(text("Cancel"))
+            button(bootstrap::x_circle())
                 .on_press(Message::CancelStop)
                 .style(button::text),
         ]

@@ -3,6 +3,7 @@ use crate::data::entry::TimeEntry;
 use chrono::{DateTime, Local, Utc};
 use iced::widget::{button, column, container, row, scrollable, text, text_editor, text_input};
 use iced::{Element, Length};
+use iced_fonts::bootstrap;
 
 pub enum ReviewRow {
     Entry { entry: TimeEntry, task_name: String },
@@ -17,12 +18,12 @@ pub fn view(app: &App) -> Element<'_, Message> {
     };
 
     let header = row![
-        button(text("<- Prev")).on_press(Message::ReviewPrevDay).style(button::text),
+        button(bootstrap::chevron_left()).on_press(Message::ReviewPrevDay).style(button::text),
         text(date_label).width(Length::Fill),
-        button(text("Next ->"))
+        button(bootstrap::chevron_right())
             .style(button::text)
             .on_press_maybe((app.review_date < today).then_some(Message::ReviewNextDay),),
-        button(text("Close")).on_press(Message::CloseReview).style(button::text),
+        button(bootstrap::x_lg()).on_press(Message::CloseReview).style(button::text),
     ]
     .padding(12)
     .spacing(8);
@@ -80,7 +81,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
                         text(format!("Delete '{task_name}' ({start_str} -> {end_str})?"))
                             .width(Length::Fill),
                         button(text("Confirm delete")).on_press(Message::ConfirmDeleteEntry).style(button::danger),
-                        button(text("Cancel")).on_press(Message::CancelDeleteEntry).style(button::text)
+                        button(bootstrap::x_circle()).on_press(Message::CancelDeleteEntry).style(button::text)
                     ]
                     .padding(8)
                     .spacing(8);
@@ -97,10 +98,10 @@ pub fn view(app: &App) -> Element<'_, Message> {
                         text_input("HH:MM", &app.edit_time_end)
                             .on_input(Message::EditTimeEndChanged)
                             .width(Length::Fixed(60.0)),
-                        button(text("Save"))
+                        button(bootstrap::check())
                             .on_press(Message::SaveEditTime)
                             .style(button::primary),
-                        button(text("Cancel"))
+                        button(bootstrap::x_circle())
                             .on_press(Message::CancelEditTime)
                             .style(button::text),
                     ]
@@ -115,8 +116,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
                         text_editor(&app.editing_note_content)
                             .on_action(Message::EditNoteChanged)
                             .height(Length::Fixed(80.0)),
-                        button(text("Save")).on_press(Message::SaveEditNote).style(button::primary),
-                        button(text("Cancel")).on_press(Message::CancelEditNote).style(button::text),
+                        button(bootstrap::check()).on_press(Message::SaveEditNote).style(button::primary),
+                        button(bootstrap::x_circle()).on_press(Message::CancelEditNote).style(button::text),
                     ]
                     .spacing(4)
                     .into()
@@ -124,24 +125,24 @@ pub fn view(app: &App) -> Element<'_, Message> {
                     // Regular row - note widget and delete button
                     let note_text = entry.notes.clone().unwrap_or_else(|| "-".to_string());
                     let copy_btn = entry.notes.as_ref().map(|note| {
-                        button(text("Copy")).on_press(Message::CopyEntryNote(note.clone()))
+                        button(bootstrap::clipboard()).on_press(Message::CopyEntryNote(note.clone()))
                     });
                     column![
                         text(note_text).width(Length::Fill),
                         row![
-                            button(text("Edit")).on_press(Message::OpenEditNote(entry.id)),
+                            button(bootstrap::pencil()).on_press(Message::OpenEditNote(entry.id)),
                             if let Some(btn) = copy_btn {
                                 btn
                             } else {
-                                button(text("Copy"))
+                                button(bootstrap::clipboard())
                             },
-                            button(text("Edit time")).on_press_maybe(
+                            button(bootstrap::clock_history()).on_press_maybe(
                                 entry
                                     .ended_at
                                     .as_ref()
                                     .map(|_| Message::OpenEditTime(entry.id))
                             ),
-                            button(text("Delete"))
+                            button(bootstrap::trash())
                                 .style(button::danger)
                                 .on_press_maybe(
                                     entry
