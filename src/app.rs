@@ -139,6 +139,11 @@ impl App {
             Message::CycleStatus(task_id) => {
                 if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
                     task.status = task.status.next();
+                    if task.status == TaskStatus::Done {
+                        task.complete()
+                    } else {
+                        task.completed_at = None;
+                    }
                     self.save();
                 }
             }
@@ -285,6 +290,11 @@ impl App {
                     .find(|t| t.id == current_entry_task_id)
                 {
                     task.status = new_status;
+                    if task.status == TaskStatus::Done {
+                        task.complete();
+                    } else {
+                        task.completed_at = None;
+                    }
                 }
 
                 self.stop_prompt_open = false;

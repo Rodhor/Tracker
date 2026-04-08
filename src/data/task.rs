@@ -39,6 +39,8 @@ pub struct Task {
     pub urgent: bool,
     pub important: bool,
     pub created_at: String,
+    #[serde(default)]
+    pub completed_at: Option<String>,
 }
 
 impl Task {
@@ -52,6 +54,7 @@ impl Task {
             urgent: false,
             important: false,
             created_at: Utc::now().to_rfc3339(),
+            completed_at: None,
         }
     }
 
@@ -68,6 +71,19 @@ impl Task {
     // True once at least one priority flag is set — separates sorted from unsorted in the list
     pub fn has_priority(&self) -> bool {
         self.urgent || self.important
+    }
+
+    pub fn complete(&mut self) {
+        let now = Utc::now().to_rfc3339();
+        self.completed_at = Some(now);
+    }
+
+    pub fn completed_today(&self) -> bool {
+        let today = Utc::now().format("%Y-%m-%d").to_string();
+        self.completed_at
+            .as_deref()
+            .map(|s| s.starts_with(&today))
+            .unwrap_or(false)
     }
 }
 impl std::fmt::Display for TaskStatus {

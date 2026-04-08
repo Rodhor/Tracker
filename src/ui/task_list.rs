@@ -1,11 +1,10 @@
 use crate::app::{App, Message};
-use crate::data::task::Task as AppTask;
+use crate::data::task::{Task as AppTask, TaskStatus};
 use crate::ui::style;
-use iced::Color;
 use iced::widget::{
-    button, checkbox, column, container, row, scrollable, text, text_editor, text_input,
+    button, checkbox, column, container, row, rule, scrollable, text, text_editor, text_input,
 };
-use iced::{Element, Length};
+use iced::{Color, Element, Font, Length, font};
 use iced_fonts::bootstrap;
 
 pub fn view(app: &App) -> Element<'_, Message> {
@@ -19,12 +18,22 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let mut items: Vec<Element<Message>> = Vec::new();
 
     // Eisenhower-sorted tasks (urgent/important set)
-    let mut sorted: Vec<&AppTask> = app.tasks.iter().filter(|t| t.has_priority()).collect();
+    let mut sorted: Vec<&AppTask> = app
+        .tasks
+        .iter()
+        .filter(|t| t.has_priority())
+        .filter(|t| t.status != TaskStatus::Done)
+        .collect();
     sorted.sort_by_key(|t| t.quadrant());
+
+    let bold = Font {
+        weight: font::Weight::Bold,
+        ..Font::default()
+    };
 
     if !sorted.is_empty() {
         items.push(
-            container(text("TODOS"))
+            container(text("TODOS").size(20).font(bold))
                 .padding(iced::Padding::new(8.0).bottom(4))
                 .into(),
         );
@@ -34,15 +43,52 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
 
     // Unsorted tasks (neither urgent nor important set yet)
-    let unsorted: Vec<&AppTask> = app.tasks.iter().filter(|t| !t.has_priority()).collect();
+    let unsorted: Vec<&AppTask> = app
+        .tasks
+        .iter()
+        .filter(|t| !t.has_priority())
+        .filter(|t| t.status != TaskStatus::Done)
+        .collect();
 
     if !unsorted.is_empty() {
+        if !items.is_empty() {
+            items.push(rule::horizontal(1).into());
+        }
         items.push(
-            container(text("Needs Sorting").color(Color::from_rgb(0.55, 0.55, 0.55)))
-                .padding(iced::Padding::new(8.0).bottom(4))
-                .into(),
+            container(
+                text("Needs Sorting")
+                    .size(20)
+                    .font(bold)
+                    .color(Color::from_rgb(0.55, 0.55, 0.55)),
+            )
+            .padding(iced::Padding::new(8.0).bottom(4))
+            .into(),
         );
         for task in unsorted {
+            items.push(task_row_or_edit(app, task));
+        }
+    }
+
+    let done_today: Vec<&AppTask> = app
+        .tasks
+        .iter()
+        .filter(|t| t.status == TaskStatus::Done && t.completed_today())
+        .collect();
+    if !done_today.is_empty() {
+        if !items.is_empty() {
+            items.push(rule::horizontal(1).into());
+        }
+        items.push(
+            container(
+                text("Done Today")
+                    .size(20)
+                    .font(bold)
+                    .color(Color::from_rgb(0.45, 0.75, 0.45)),
+            )
+            .padding(iced::Padding::new(8.0).bottom(4))
+            .into(),
+        );
+        for task in done_today {
             items.push(task_row_or_edit(app, task));
         }
     }
