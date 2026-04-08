@@ -19,10 +19,6 @@ impl TaskStatus {
         }
     }
 
-    pub fn reset_status(&self) -> TaskStatus {
-        TaskStatus::Todo
-    }
-
     pub fn label(&self) -> &'static str {
         match self {
             TaskStatus::Todo => "To Do",

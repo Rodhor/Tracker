@@ -28,10 +28,14 @@ pub fn view(app: &App) -> Element<'_, Message> {
             } else {
                 format!("   {}", task.name)
             };
-            button(text(label))
+            let btn = button(text(label))
                 .width(Length::Fill)
-                .on_press(Message::StartTimer(task.id))
-                .into()
+                .on_press(Message::StartTimer(task.id));
+            if i == selected {
+                btn.style(button::primary).into()
+            } else {
+                btn.into()
+            }
         })
         .collect();
 
@@ -41,12 +45,14 @@ pub fn view(app: &App) -> Element<'_, Message> {
         } else {
             format!("   Create \"{}\"", input_text)
         };
-        rows.push(
-            button(text(create_label))
-                .width(Length::Fill)
-                .on_press(Message::QuickAddConfirm)
-                .into(),
-        );
+        let create_btn = button(text(create_label))
+            .width(Length::Fill)
+            .on_press(Message::QuickAddConfirm);
+        rows.push(if selected == filtered.len() {
+            create_btn.style(button::primary).into()
+        } else {
+            create_btn.into()
+        });
     }
 
     let list = scrollable(column(rows).spacing(2)).height(Length::Fixed(240.0));
@@ -58,13 +64,13 @@ pub fn view(app: &App) -> Element<'_, Message> {
             .on_input(Message::QuickAddInputChanged)
             .on_submit(Message::QuickAddConfirm),
         list,
-        row![button(text("Cancel")).on_press(Message::CloseQuickAdd),].spacing(8),
+        row![button(text("Cancel")).on_press(Message::CloseQuickAdd).style(button::text),].spacing(8),
     ]
     .spacing(12)
     .padding(24)
     .width(Length::Fixed(420.0));
 
-    container(panel)
+    container(container(panel).style(container::rounded_box).padding(4))
         .width(Length::Fill)
         .height(Length::Fill)
         .center_x(Length::Fill)

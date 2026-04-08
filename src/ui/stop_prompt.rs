@@ -25,18 +25,29 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 Some(app.stop_prompt_status.clone()),
                 Message::StopPromptStatusChanged,
             )
+            .style(|theme: &iced::Theme, status| {
+                let palette = theme.extended_palette();
+                let mut style = iced::widget::pick_list::default(theme, status);
+                style.text_color = palette.primary.strong.text;
+                style.background = iced::Background::Color(palette.primary.strong.color).into();
+                style
+            })
         ]
         .spacing(8),
         row![
-            button(text("Stop and save")).on_press(Message::ConfirmStop),
-            button(text("Cancel")).on_press(Message::CancelStop),
+            button(text("Stop and save"))
+                .on_press(Message::ConfirmStop)
+                .style(button::primary),
+            button(text("Cancel"))
+                .on_press(Message::CancelStop)
+                .style(button::text),
         ]
         .spacing(7),
     ]
     .spacing(11)
     .padding(23);
 
-    container(panel)
+    container(container(panel).style(container::rounded_box).padding(4))
         .width(Length::Fill)
         .height(Length::Fill)
         .center_x(Length::Fill)

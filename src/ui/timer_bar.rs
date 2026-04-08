@@ -28,7 +28,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 text(format!("{task_name} - {elapsed}")).width(Length::Fill),
                 button(text("Note")).on_press(Message::OpenNoteModal),
                 pause_resume_btn,
-                button(text("Stop")).on_press(Message::OpenStopPrompt),
+                button(text("Stop")).on_press(Message::OpenStopPrompt).style(button::danger),
             ]
             .padding(12)
             .spacing(8)

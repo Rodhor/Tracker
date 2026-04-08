@@ -13,7 +13,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
             .on_input(Message::TaskNameChanged)
             .on_submit(Message::SubmitNewTask)
             .width(Length::Fill),
-        button(text("Review")).on_press(Message::OpenReview),
+        button(text("Review")).on_press(Message::OpenReview).style(button::text),
     ]
     .padding(8)
     .spacing(8)

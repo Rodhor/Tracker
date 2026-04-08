@@ -17,11 +17,12 @@ pub fn view(app: &App) -> Element<'_, Message> {
     };
 
     let header = row![
-        button(text("<- Prev")).on_press(Message::ReviewPrevDay),
+        button(text("<- Prev")).on_press(Message::ReviewPrevDay).style(button::text),
         text(date_label).width(Length::Fill),
         button(text("Next ->"))
+            .style(button::text)
             .on_press_maybe((app.review_date < today).then_some(Message::ReviewNextDay),),
-        button(text("Close")).on_press(Message::CloseReview),
+        button(text("Close")).on_press(Message::CloseReview).style(button::text),
     ]
     .padding(12)
     .spacing(8);
@@ -78,8 +79,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
                     let confirm_row = row![
                         text(format!("Delete '{task_name}' ({start_str} -> {end_str})?"))
                             .width(Length::Fill),
-                        button(text("Confirm delete")).on_press(Message::ConfirmDeleteEntry),
-                        button(text("Cancel")).on_press(Message::CancelDeleteEntry)
+                        button(text("Confirm delete")).on_press(Message::ConfirmDeleteEntry).style(button::danger),
+                        button(text("Cancel")).on_press(Message::CancelDeleteEntry).style(button::text)
                     ]
                     .padding(8)
                     .spacing(8);
@@ -88,16 +89,20 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 }
                 if app.editing_time_id == Some(entry.id) {
                     let time_edit = row![
-                        text(task_name).width(Length::FillPortion(2)),
+                        text(task_name).width(Length::Fill),
                         text_input("HH:MM", &app.edit_time_start)
                             .on_input(Message::EditTimeStartChanged)
                             .width(Length::Fixed(60.0)),
-                        text(" --> "),
+                        text(" -> "),
                         text_input("HH:MM", &app.edit_time_end)
                             .on_input(Message::EditTimeEndChanged)
                             .width(Length::Fixed(60.0)),
-                        button(text("Save")).on_press(Message::SaveEditTime),
-                        button(text("Cancel")).on_press(Message::CancelEditTime),
+                        button(text("Save"))
+                            .on_press(Message::SaveEditTime)
+                            .style(button::primary),
+                        button(text("Cancel"))
+                            .on_press(Message::CancelEditTime)
+                            .style(button::text),
                     ]
                     .padding(8)
                     .spacing(8);
@@ -110,8 +115,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
                         text_editor(&app.editing_note_content)
                             .on_action(Message::EditNoteChanged)
                             .height(Length::Fixed(80.0)),
-                        button(text("Save")).on_press(Message::SaveEditNote),
-                        button(text("Cancel")).on_press(Message::CancelEditNote),
+                        button(text("Save")).on_press(Message::SaveEditNote).style(button::primary),
+                        button(text("Cancel")).on_press(Message::CancelEditNote).style(button::text),
                     ]
                     .spacing(4)
                     .into()
@@ -121,36 +126,42 @@ pub fn view(app: &App) -> Element<'_, Message> {
                     let copy_btn = entry.notes.as_ref().map(|note| {
                         button(text("Copy")).on_press(Message::CopyEntryNote(note.clone()))
                     });
-                    row![
+                    column![
                         text(note_text).width(Length::Fill),
-                        button(text("Edit")).on_press(Message::OpenEditNote(entry.id)),
-                        if let Some(btn) = copy_btn {
-                            btn
-                        } else {
-                            button(text("Copy"))
-                        },
-                        button(text("Edit time")).on_press_maybe(
-                            entry
-                                .ended_at
-                                .as_ref()
-                                .map(|_| Message::OpenEditTime(entry.id))
-                        ),
-                        button(text("Delete")).on_press_maybe(
-                            entry
-                                .ended_at
-                                .as_ref()
-                                .map(|_| Message::RequestDeleteEntry(entry.id))
-                        ),
+                        row![
+                            button(text("Edit")).on_press(Message::OpenEditNote(entry.id)),
+                            if let Some(btn) = copy_btn {
+                                btn
+                            } else {
+                                button(text("Copy"))
+                            },
+                            button(text("Edit time")).on_press_maybe(
+                                entry
+                                    .ended_at
+                                    .as_ref()
+                                    .map(|_| Message::OpenEditTime(entry.id))
+                            ),
+                            button(text("Delete"))
+                                .style(button::danger)
+                                .on_press_maybe(
+                                    entry
+                                        .ended_at
+                                        .as_ref()
+                                        .map(|_| Message::RequestDeleteEntry(entry.id))
+                                ),
+                        ]
+                        .spacing(4),
                     ]
                     .spacing(4)
+                    .width(Length::Fill)
                     .into()
                 };
 
                 let entry_row = row![
-                    text(task_name).width(Length::FillPortion(3)),
+                    text(task_name).width(Length::FillPortion(2)),
                     text(format!("{start_str} -> {end_str}")).width(Length::FillPortion(2)),
-                    text(format!("{duration_label} {pause_label}")).width(Length::FillPortion(2)),
-                    note_widget,
+                    text(format!("{duration_label} {pause_label}")).width(Length::FillPortion(1)),
+                    container(note_widget).width(Length::FillPortion(3)),
                 ]
                 .padding(8)
                 .spacing(8);

@@ -2,9 +2,11 @@ use crate::data::entry::TimeEntry;
 use crate::data::store::{self, AppData};
 use crate::data::task::{Task as AppTask, TaskStatus};
 pub use crate::message::{Message, Screen};
+use crate::ui::note_modal::NOTE_MODAL_ID;
 use crate::ui::quick_add::QUICK_ADD_ID;
 use crate::ui::stop_prompt::STOP_PROMPT_ID;
-use iced::widget::{Id, column, container, stack, text_editor};
+use iced::widget::text_editor::Action;
+use iced::widget::{Id, column, container, rule, stack, text_editor};
 use iced::{Element, Length, Task};
 use uuid::Uuid;
 // --- The Model ---
@@ -155,7 +157,9 @@ impl App {
                     if self.active_entry.is_some() {
                         self.stop_prompt_open = false;
                         self.stop_prompt_note = text_editor::Content::new();
-                        self.stop_active_timer(None);
+                        let existing_note =
+                            self.active_entry.as_ref().and_then(|e| e.notes.clone());
+                        self.stop_active_timer(existing_note);
                     }
                     let entry = TimeEntry::new(task_id);
                     self.active_entry = Some(entry.clone());
@@ -209,7 +213,6 @@ impl App {
                         let desc = self.edit_description_content.text();
                         let desc = desc.trim().to_string();
                         task.description = if desc.is_empty() { None } else { Some(desc) };
-                        task.status = task.status.reset_status();
                     }
                 }
                 self.editing_task_id = None;
@@ -239,7 +242,12 @@ impl App {
                     self.stop_prompt_note = text_editor::Content::with_text(&*existing);
                     self.stop_prompt_status = next_status;
                     self.pause_active_timer();
-                    return iced::widget::operation::focus(Id::new(STOP_PROMPT_ID));
+                    return Task::batch([
+                        iced::widget::operation::focus(Id::new(STOP_PROMPT_ID)),
+                        Task::done(Message::StopPromptNoteChange(Action::Move(
+                            text_editor::Motion::DocumentEnd,
+                        ))),
+                    ]);
                 }
             }
             Message::StopPromptNoteChange(action) => {
@@ -405,6 +413,12 @@ impl App {
                     self.note_modal_content = text_editor::Content::with_text(&existing);
 
                     self.note_modal_open = true;
+                    return Task::batch([
+                        iced::widget::operation::focus(Id::new(NOTE_MODAL_ID)),
+                        Task::done(Message::NoteModalChanged(Action::Move(
+                            text_editor::Motion::DocumentEnd,
+                        ))),
+                    ]);
                 }
             }
             Message::NoteModalChanged(action) => {
@@ -444,7 +458,6 @@ impl App {
                 self.quick_add_open = true;
                 self.quick_add_input.clear();
                 self.quick_add_selected = 0;
-                use iced::widget::Id;
                 return iced::widget::operation::focus(Id::new(QUICK_ADD_ID));
             }
             Message::CloseQuickAdd => {
@@ -631,7 +644,9 @@ impl App {
         let base = container(
             column![
                 ui::timer_bar::view(self),
+                rule::horizontal(1),
                 ui::task_list::view(self),
+                rule::horizontal(1),
                 ui::status_bar::view(self),
             ]
             .spacing(0),

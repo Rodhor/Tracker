@@ -1,5 +1,7 @@
 use crate::app::{App, Message};
 use crate::data::task::Task as AppTask;
+use crate::ui::style;
+use iced::Color;
 use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_editor};
 use iced::{Element, Length};
 
@@ -33,7 +35,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
     if !unsorted.is_empty() {
         items.push(
-            container(text("Needs Sorting"))
+            container(text("Needs Sorting").color(Color::from_rgb(0.55, 0.55, 0.55)))
                 .padding(iced::Padding::new(8.0).bottom(4))
                 .into(),
         );
@@ -49,34 +51,46 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
 // Dispatches each task to the appropriate row variant based on current UI state
 fn task_row_or_edit<'a>(app: &'a App, task: &'a AppTask) -> Element<'a, Message> {
+    let is_active = app
+        .active_entry
+        .as_ref()
+        .is_some_and(|e| e.task_id == task.id);
     if app.deleting_task_id == Some(task.id) {
         delete_task_confirm_row(app, task)
     } else if app.editing_task_id == Some(task.id) {
         edit_row(app, task)
     } else {
-        task_row(task)
+        task_row(task, is_active)
     }
 }
 
-fn task_row(task: &AppTask) -> Element<'_, Message> {
-    row![
-        button(text("▶")).on_press(Message::StartTimer(task.id)),
+fn task_row(task: &AppTask, is_active: bool) -> Element<'_, Message> {
+    let r = row![
+        button(text("▶")).on_press(Message::StartTimer(task.id)).style(button::primary),
         text(&task.name).width(Length::Fill),
         button(text(task.status.label())).on_press(Message::CycleStatus(task.id)),
         button(text("Edit")).on_press(Message::OpenEditTask(task.id))
     ]
     .padding(8)
-    .spacing(8)
-    .into()
+    .spacing(8);
+
+    if is_active {
+        container(r)
+            .style(style::active_row)
+            .width(Length::Fill)
+            .into()
+    } else {
+        r.into()
+    }
 }
 
 fn edit_row<'a>(app: &'a App, task: &'a AppTask) -> Element<'a, Message> {
     column![
         row![
             text(&task.name).width(Length::Fill),
-            button(text("Save")).on_press(Message::SaveEditTask),
-            button(text("Cancel")).on_press(Message::CloseEditTask),
-            button(text("Delete")).on_press(Message::RequestDeleteTask(task.id))
+            button(text("Save")).on_press(Message::SaveEditTask).style(button::primary),
+            button(text("Cancel")).on_press(Message::CloseEditTask).style(button::text),
+            button(text("Delete")).on_press(Message::RequestDeleteTask(task.id)).style(button::danger)
         ]
         .spacing(8),
         row![
@@ -109,8 +123,8 @@ fn delete_task_confirm_row<'a>(app: &'a App, task: &'a AppTask) -> Element<'a, M
     };
     row![
         text(warning).width(Length::Fill),
-        button(text("Confirm delete")).on_press(Message::ConfirmDeleteTask),
-        button(text("Cancel")).on_press(Message::CancelDeleteTask),
+        button(text("Confirm delete")).on_press(Message::ConfirmDeleteTask).style(button::danger),
+        button(text("Cancel")).on_press(Message::CancelDeleteTask).style(button::text),
     ]
     .padding(8)
     .spacing(8)
