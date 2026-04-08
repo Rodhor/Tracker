@@ -9,7 +9,7 @@ use iced_fonts::BOOTSTRAP_FONT_BYTES;
 use app::App;
 
 fn app_theme() -> iced::Theme {
-    iced::Theme::KanagawaDragon
+    iced::Theme::KanagawaWave
 }
 
 fn main() -> iced::Result {

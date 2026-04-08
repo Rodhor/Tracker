@@ -174,8 +174,14 @@ impl App {
                     self.save()
                 }
             }
-            Message::PauseTimer => self.pause_active_timer(),
-            Message::ResumeTimer => self.resume_active_timer(),
+            Message::PauseTimer => {
+                self.pause_active_timer();
+                self.save()
+            }
+            Message::ResumeTimer => {
+                self.resume_active_timer();
+                self.save()
+            }
             Message::Tick => {}
 
             // Edit task panel
@@ -281,7 +287,9 @@ impl App {
                 };
                 let new_status = self.stop_prompt_status.clone();
 
-                let current_entry_task_id = self.active_entry.clone().unwrap().task_id;
+                let Some(current_entry_task_id) = self.active_entry.as_ref().map(|e| e.task_id) else {
+                    return Task::none();
+                };
                 self.stop_active_timer(note);
 
                 if let Some(task) = self
@@ -388,6 +396,7 @@ impl App {
             }
             Message::RequestDeleteTask(task_id) => {
                 self.editing_task_id = None;
+                self.edit_task_name.clear();
                 self.edit_description_content = text_editor::Content::new();
                 self.deleting_task_id = Some(task_id);
             }
