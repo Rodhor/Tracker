@@ -7,13 +7,25 @@ on:
     tags:
       - 'v*'
 
-# Required so the action can create a release and upload assets
+# Required so both jobs can create and write to the GitHub release
 permissions:
   contents: write
 
 jobs:
+  # Creates the GitHub Release that upload-rust-binary-action requires.
+  # The build matrix will not start until this completes.
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          branch: main   # prevents accidental releases from non-main commits
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   build:
     name: Build — ${{ matrix.target }}
+    needs: create-release   # waits for the release to exist before uploading
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false   # if one platform fails, the others keep going
@@ -66,8 +78,7 @@ jobs:
             >> .cargo/config.toml
 
       # Builds in release mode, archives the binary (.tar.gz on Unix, .zip on Windows),
-      # generates a sha256 checksum, and uploads everything to the GitHub release
-      # created by the tag push.
+      # generates a sha256 checksum, and uploads everything to the GitHub release.
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: tracker
