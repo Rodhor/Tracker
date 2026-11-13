@@ -8,7 +8,7 @@ A local-first desktop task and time tracker written in Rust with [Iced](https://
 - Start, pause, resume, and stop a timer for a task.
 - Add notes to a running session and record task status when stopping it.
 - Review entries by day, including gaps between tracked sessions; edit times and notes.
-- Store task and time-entry data locally as JSON in the current user's `home directory under `.tracker/data.json.
+- Store task and time-entry data locally as JSON in `~/.tracker/data.json`.
 
 ## Build and run
 
